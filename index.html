@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Spectre Protocol</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -13,6 +13,7 @@
             height: 100vh;
             width: 100vw;
             background-color: #0b0213;
+            touch-action: none; /* Prevent pull-to-refresh on mobile */
         }
         
         #main-container {
@@ -47,6 +48,11 @@
             justify-content: space-between;
             padding: 0 2rem;
             box-shadow: 0 -5px 20px rgba(255, 0, 127, 0.2);
+            pointer-events: none; /* Let touches pass through to controls below/above */
+        }
+        
+        #ui-panel > * {
+            pointer-events: auto; /* Re-enable clicks on buttons inside panel */
         }
 
         #hud {
@@ -240,12 +246,77 @@
             background: rgba(255, 0, 127, 0.1);
         }
 
+        /* Mobile Controls */
+        #mobile-controls {
+            display: none;
+            position: absolute;
+            bottom: 40px; /* Above the bottom bar */
+            left: 0;
+            width: 100%;
+            height: 140px;
+            z-index: 60;
+            padding: 0 20px;
+            box-sizing: border-box;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        #joystick-container {
+            width: 120px;
+            height: 120px;
+            background: rgba(0, 255, 200, 0.1);
+            border: 2px solid rgba(0, 255, 200, 0.4);
+            border-radius: 50%;
+            position: relative;
+            pointer-events: auto;
+            backdrop-filter: blur(2px);
+        }
+
+        #joystick-knob {
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 255, 200, 0.6);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 15px #00ffc8;
+        }
+
+        #fire-btn-mobile {
+            width: 100px;
+            height: 100px;
+            background: rgba(255, 0, 127, 0.2);
+            border: 3px solid #ff007f;
+            border-radius: 50%;
+            color: #ff007f;
+            font-family: monospace;
+            font-weight: bold;
+            font-size: 1.2rem;
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px rgba(255, 0, 127, 0.4);
+            backdrop-filter: blur(2px);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        
+        #fire-btn-mobile:active {
+            background: rgba(255, 0, 127, 0.6);
+            color: #fff;
+            box-shadow: 0 0 30px #ff007f;
+        }
+
         @media (max-width: 768px) {
             #ui-panel {
                 flex-direction: column;
-                padding: 1rem;
-                gap: 0.5rem;
-                min-height: 100px;
+                padding: 0.5rem;
+                gap: 0.25rem;
+                min-height: 60px;
             }
             .control-group {
                 display: flex;
@@ -254,6 +325,12 @@
             }
             .glitch-text { font-size: 2rem; }
             .leaderboard { width: 95%; }
+            
+            #mobile-controls { display: flex; }
+            #instructions .text-cyan-300 { display: none; } /* Hide keyboard instructions on mobile */
+            
+            h1 { font-size: 1.2rem; }
+            #hud { font-size: 1rem; top: 10px; left: 10px; min-width: 150px; }
         }
     </style>
     
@@ -288,6 +365,13 @@
             </div>
         </div>
         
+        <div id="mobile-controls">
+            <div id="joystick-container">
+                <div id="joystick-knob"></div>
+            </div>
+            <button id="fire-btn-mobile">FIRE</button>
+        </div>
+
         <div id="overlay-screen">
             <p class="glitch-text" id="overlay-title">SPECTRE PROTOCOL</p>
             
@@ -330,7 +414,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.7 // 3D FLIGHT</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.8 // MOBILE OP</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-pink-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -445,11 +529,11 @@
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
             
-            document.getElementById('sys-version').innerText = "SYS.VER.9.7 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.9.8 // LOCAL STORAGE";
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.9.7 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.9.8 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -457,7 +541,7 @@
         }, (error) => {
             console.error("Leaderboard sync error:", error);
             // Fallback to local if cloud fails mid-game
-            document.getElementById('sys-version').innerText = "SYS.VER.9.7 // SYNC ERROR";
+            document.getElementById('sys-version').innerText = "SYS.VER.9.8 // SYNC ERROR";
         });
     }
 
@@ -766,7 +850,7 @@
     let scene, camera, renderer, composer, rgbPass;
     let player, shieldMesh, groundMesh1, groundMesh2;
     let boss = null;
-    let nextBossScoreThreshold = 2000;
+    let nextBossScoreThreshold = 5000;
     
     const lasers = [];
     const enemies = [];
@@ -848,37 +932,27 @@
         createPlayerShip();
         createStarfield();
         setupPostProcessing(container.clientWidth, container.clientHeight);
+        setupMobileControls();
 
         window.addEventListener('resize', onWindowResize);
         
-        // Mouse / Touch Input
+        // Desktop Mouse Input
         container.addEventListener('mousemove', (e) => {
+             // Only process mouse move if not touching (to avoid conflict with touch emulation)
+             if(e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
+             
              const rect = renderer.domElement.getBoundingClientRect();
              targetX = ((e.clientX - rect.left) / rect.width * 2 - 1) * 8;
-             // Map mouse Y to game Y (approx -2 to +3)
              targetY = -((e.clientY - rect.top) / rect.height * 2 - 1) * 4 + 1;
              targetY = Math.max(-1.5, Math.min(3.5, targetY));
         });
         container.addEventListener('mousedown', () => { keys.fire = true; });
         container.addEventListener('mouseup', () => { keys.fire = false; });
-        container.addEventListener('touchstart', (e) => { 
-             keys.fire = true; 
-             const rect = renderer.domElement.getBoundingClientRect();
-             targetX = ((e.touches[0].clientX - rect.left) / rect.width * 2 - 1) * 8;
-             targetY = -((e.touches[0].clientY - rect.top) / rect.height * 2 - 1) * 4 + 1;
-             targetY = Math.max(-1.5, Math.min(3.5, targetY));
-             
-             // iOS Unlock
+        
+        // Global Touch for Audio Unlock
+        document.addEventListener('touchstart', () => {
              if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') AudioSys.unlock();
-        });
-        container.addEventListener('touchend', () => { keys.fire = false; });
-        container.addEventListener('touchmove', (e) => {
-             e.preventDefault(); // Prevent scroll
-             const rect = renderer.domElement.getBoundingClientRect();
-             targetX = ((e.touches[0].clientX - rect.left) / rect.width * 2 - 1) * 8;
-             targetY = -((e.touches[0].clientY - rect.top) / rect.height * 2 - 1) * 4 + 1;
-             targetY = Math.max(-1.5, Math.min(3.5, targetY));
-        });
+        }, {once: true});
 
         // Keyboard Input
         window.addEventListener('keydown', (e) => {
@@ -915,6 +989,94 @@
         }, 1000);
 
         animate(0);
+    }
+    
+    function setupMobileControls() {
+        const joystickContainer = document.getElementById('joystick-container');
+        const joystickKnob = document.getElementById('joystick-knob');
+        const fireBtn = document.getElementById('fire-btn-mobile');
+        
+        // Joystick Logic
+        let touchId = null;
+        const maxRadius = 35; // limit knob movement
+        
+        joystickContainer.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if(touchId !== null) return;
+            const touch = e.changedTouches[0];
+            touchId = touch.identifier;
+            updateJoystick(touch);
+        });
+        
+        joystickContainer.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            for(let i=0; i<e.changedTouches.length; i++) {
+                if(e.changedTouches[i].identifier === touchId) {
+                    updateJoystick(e.changedTouches[i]);
+                    break;
+                }
+            }
+        });
+        
+        const resetJoystick = (e) => {
+            e.preventDefault();
+            for(let i=0; i<e.changedTouches.length; i++) {
+                if(e.changedTouches[i].identifier === touchId) {
+                    touchId = null;
+                    joystickKnob.style.transform = `translate(-50%, -50%)`;
+                    // Optional: Auto-center ship on release
+                    // targetX = 0; targetY = 1.0; 
+                    break;
+                }
+            }
+        };
+        
+        joystickContainer.addEventListener('touchend', resetJoystick);
+        joystickContainer.addEventListener('touchcancel', resetJoystick);
+        
+        function updateJoystick(touch) {
+            const rect = joystickContainer.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            const dx = touch.clientX - centerX;
+            const dy = touch.clientY - centerY;
+            const distance = Math.min(Math.sqrt(dx*dx + dy*dy), maxRadius);
+            const angle = Math.atan2(dy, dx);
+            
+            const knobX = Math.cos(angle) * distance;
+            const knobY = Math.sin(angle) * distance;
+            
+            joystickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+            
+            // Map normalized joystick vector (-1 to 1) to game coordinates
+            // x: -1 to 1 -> targetX: -8 to 8
+            // y: -1 to 1 -> targetY: -1.5 to 3.5
+            
+            const normX = knobX / maxRadius;
+            const normY = knobY / maxRadius; // Down is positive in screen space, but we want Up positive
+            
+            targetX = normX * 8.0;
+            // Invert Y because screen Y is down, game Y up
+            // Base Y is 1.0. Range +/- 2.5
+            targetY = 1.0 + (-normY * 2.5);
+            
+            targetX = Math.max(-8, Math.min(8, targetX));
+            targetY = Math.max(-1.5, Math.min(3.5, targetY));
+        }
+        
+        // Fire Button Logic
+        fireBtn.addEventListener('touchstart', (e) => {
+             e.preventDefault();
+             keys.fire = true;
+             fireBtn.style.background = "rgba(255, 0, 127, 0.6)";
+        });
+        
+        fireBtn.addEventListener('touchend', (e) => {
+             e.preventDefault();
+             keys.fire = false;
+             fireBtn.style.background = "rgba(255, 0, 127, 0.2)";
+        });
     }
 
     function setupPostProcessing(w, h) {
