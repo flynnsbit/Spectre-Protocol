@@ -480,9 +480,33 @@
         nextNoteTime: 0, tempo: 128, lookahead: 25.0, scheduleAheadTime: 0.1, timerID: null, measure: 0, beat: 0,
         
         init: function() {
-            if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-            if (this.ctx.state === 'suspended') this.ctx.resume();
+            if (!this.ctx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+            }
         },
+        
+        unlock: function() {
+             // iOS Requirement: Play a silent buffer on user interaction to unlock audio hardware
+            if (!this.ctx) this.init();
+            
+            // Create an empty buffer
+            const buffer = this.ctx.createBuffer(1, 1, 22050);
+            const source = this.ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(this.ctx.destination);
+            
+            // Play it now
+            source.start(0);
+            
+            // Force resume if suspended
+            if (this.ctx.state === 'suspended') {
+                this.ctx.resume().then(() => {
+                    console.log("Audio Context Resumed via Unlock");
+                });
+            }
+        },
+
         toggleMute: function() {
             this.isMuted = !this.isMuted;
             if (this.isMuted) { if(this.ctx) this.ctx.suspend(); } 
@@ -706,6 +730,13 @@
             e.target.innerText = AudioSys.toggleMute() ? "UNMUTE AUDIO" : "MUTE AUDIO";
         });
         
+        // Add touchstart listener for immediate iOS unlock attempt
+        document.body.addEventListener('touchstart', function() {
+             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') {
+                 AudioSys.unlock();
+             }
+        }, { once: true });
+        
         // Pre-fill local name
         const savedName = localStorage.getItem('spectre_agent_name');
         if(savedName) document.getElementById('agent-name-input').value = savedName;
@@ -889,7 +920,9 @@
     }
 
     function startGame() {
-        AudioSys.init(); AudioSys.start();
+        AudioSys.unlock(); // Unlock iOS Audio immediately on click
+        AudioSys.init(); 
+        AudioSys.start();
         isGameOver = false; isGameRunning = true;
         score = 0; missedEnemies = 0; gameStartTime = performance.now();
         updateUI();
