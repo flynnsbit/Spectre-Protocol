@@ -1,0 +1,21 @@
+{
+  "name": "Spectre Protocol",
+  "short_name": "Spectre",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0b0213",
+  "theme_color": "#0b0213",
+  "description": "Cyberpunk Space Shooter - Defend the Grid",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' style='background:%230b0213'%3E%3Cpath d='M256 32L32 480h448L256 32zm0 112l128 256H128L256 144z' fill='%23ff007f'/%3E%3Ccircle cx='256' cy='300' r='64' fill='%2300ffc8'/%3E%3Cpath d='M256 260a40 40 0 1 0 0 80 40 40 0 1 0 0-80z' fill='%230b0213'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' style='background:%230b0213'%3E%3Cpath d='M256 32L32 480h448L256 32zm0 112l128 256H128L256 144z' fill='%23ff007f'/%3E%3Ccircle cx='256' cy='300' r='64' fill='%2300ffc8'/%3E%3Cpath d='M256 260a40 40 0 1 0 0 80 40 40 0 1 0 0-80z' fill='%230b0213'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

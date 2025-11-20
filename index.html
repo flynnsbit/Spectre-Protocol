@@ -2,8 +2,20 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Spectre Protocol</title>
+    
+    <!-- PWA / iOS Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0b0213">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <!-- Custom Icon (Spectre Eye) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' style='background:%230b0213'%3E%3Cpath d='M256 32L32 480h448L256 32zm0 112l128 256H128L256 144z' fill='%23ff007f'/%3E%3Ccircle cx='256' cy='300' r='64' fill='%2300ffc8'/%3E%3Cpath d='M256 260a40 40 0 1 0 0 80 40 40 0 1 0 0-80z' fill='%230b0213'/%3E%3C/svg%3E">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' style='background:%230b0213'%3E%3Cpath d='M256 32L32 480h448L256 32zm0 112l128 256H128L256 144z' fill='%23ff007f'/%3E%3Ccircle cx='256' cy='300' r='64' fill='%2300ffc8'/%3E%3Cpath d='M256 260a40 40 0 1 0 0 80 40 40 0 1 0 0-80z' fill='%230b0213'/%3E%3C/svg%3E">
+    <link rel="manifest" href="manifest.json">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -14,6 +26,9 @@
             width: 100vw;
             background-color: #0b0213;
             touch-action: none; /* Prevent pull-to-refresh on mobile */
+            -webkit-touch-callout: none;
+            user-select: none;
+            -webkit-user-select: none;
         }
         
         #main-container {
@@ -47,6 +62,7 @@
             align-items: center;
             justify-content: space-between;
             padding: 0 2rem;
+            padding-bottom: env(safe-area-inset-bottom); /* iOS Safe Area */
             box-shadow: 0 -5px 20px rgba(255, 0, 127, 0.2);
             pointer-events: none; /* Let touches pass through to controls below/above */
         }
@@ -57,7 +73,7 @@
 
         #hud {
             position: absolute;
-            top: 20px;
+            top: max(20px, env(safe-area-inset-top)); /* iOS Safe Area */
             left: 20px;
             color: #00ffc8;
             font-family: monospace;
@@ -260,6 +276,7 @@
             justify-content: space-between;
             align-items: center;
             pointer-events: none;
+            padding-bottom: env(safe-area-inset-bottom);
         }
 
         #joystick-container {
@@ -414,7 +431,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.8 // MOBILE OP</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.9 // FINAL</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-pink-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
