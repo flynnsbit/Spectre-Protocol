@@ -286,7 +286,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.1 // VISUAL OVERDRIVE</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.2 // AUDIO SYNC</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-pink-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -692,8 +692,26 @@
         
         playLaser: function() { 
             if (this.isMuted || !this.ctx) return;
-            this.playTone(880, 'square', 0.1, this.ctx.currentTime, 0.1);
+            const time = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            
+            // Percussive Beat Laser (Kick/Tom Style)
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(350, time);
+            // Rapid pitch drop for the "thud"
+            osc.frequency.exponentialRampToValueAtTime(60, time + 0.15);
+            
+            gain.gain.setValueAtTime(0.4, time);
+            gain.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
+            
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            
+            osc.start(time);
+            osc.stop(time + 0.15);
         },
+
         playExplosion: function() {
              if (this.isMuted || !this.ctx) return;
              for(let i=0; i<3; i++) {
