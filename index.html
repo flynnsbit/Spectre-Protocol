@@ -286,7 +286,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.0 // AUDIO OVERDRIVE</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.1 // VISUAL OVERDRIVE</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-pink-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -304,6 +304,7 @@
     import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
     import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
     import { CopyShader } from 'three/addons/shaders/CopyShader.js';
+    import { RGBShiftShader } from 'three/addons/shaders/RGBShiftShader.js';
 
     import { initializeApp } from 'firebase/app';
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
@@ -400,11 +401,11 @@
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
             
-            document.getElementById('sys-version').innerText = "SYS.VER.9.0 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.9.1 // LOCAL STORAGE";
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.9.0 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.9.1 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -412,7 +413,7 @@
         }, (error) => {
             console.error("Leaderboard sync error:", error);
             // Fallback to local if cloud fails mid-game
-            document.getElementById('sys-version').innerText = "SYS.VER.9.0 // SYNC ERROR";
+            document.getElementById('sys-version').innerText = "SYS.VER.9.1 // SYNC ERROR";
         });
     }
 
@@ -705,14 +706,16 @@
         }
     };
 
-    let scene, camera, renderer, composer;
+    let scene, camera, renderer, composer, rgbPass;
     let player, groundMesh1, groundMesh2;
     const lasers = [];
     const enemies = [];
+    const particles = [];
     const keys = { left: false, right: false };
     let score = 0, missedEnemies = 0, isGameOver = false, isGameRunning = false, gameStartTime = 0;
     let currentPhase = 0; // 0: Init, 1: Normal, 2: Hard, 3: Overdrive
     let spawnInterval = 2500, lastEnemySpawnTime = 0, targetX = 0;
+    let shakeIntensity = 0;
     
     const COLORS = { 
         cyan: 0x00ffc8, 
@@ -807,7 +810,15 @@
     function setupPostProcessing(w, h) {
         composer = new EffectComposer(renderer);
         composer.addPass(new RenderPass(scene, camera));
+        
+        // Bloom
         composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.75, 0.5, 0.2));
+        
+        // RGB Shift (Glitch)
+        rgbPass = new ShaderPass(RGBShiftShader);
+        rgbPass.uniforms['amount'].value = 0.0015; // Minimal default shift
+        composer.addPass(rgbPass);
+
         composer.addPass(new ShaderPass(CopyShader));
     }
 
@@ -942,6 +953,9 @@
         l.position.z -= 1;
         lasers.push(l);
         scene.add(l);
+        
+        // Kickback shake
+        shakeIntensity += 0.02;
     }
 
     function spawnEnemy() {
@@ -972,6 +986,32 @@
         scene.add(mesh);
         lastEnemySpawnTime = performance.now();
     }
+    
+    function spawnParticles(pos, color) {
+        const count = 12;
+        const geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+        const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true });
+        
+        for(let i=0; i<count; i++) {
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(pos);
+            
+            mesh.userData.velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.5,
+                (Math.random() - 0.5) * 0.5,
+                (Math.random() - 0.5) * 0.5
+            );
+            mesh.userData.rotSpeed = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.2,
+                (Math.random() - 0.5) * 0.2,
+                (Math.random() - 0.5) * 0.2
+            );
+            mesh.userData.life = 1.0;
+            
+            scene.add(mesh);
+            particles.push(mesh);
+        }
+    }
 
     function checkCollisions() {
         const pBox = new THREE.Box3().setFromObject(player);
@@ -980,6 +1020,11 @@
             for (let j = enemies.length - 1; j >= 0; j--) {
                 if (lBox.intersectsBox(new THREE.Box3().setFromObject(enemies[j]))) {
                     AudioSys.playExplosion();
+                    spawnParticles(enemies[j].position, enemies[j].material.color);
+                    
+                    // Impact Shake
+                    shakeIntensity += 0.1;
+                    
                     const enemyScore = enemies[j].userData.scoreVal || 100;
                     scene.remove(enemies[j]); enemies.splice(j, 1);
                     scene.remove(lasers[i]); lasers.splice(i, 1);
@@ -991,6 +1036,8 @@
         for (const e of enemies) {
             if (pBox.intersectsBox(new THREE.Box3().setFromObject(e))) {
                 AudioSys.playExplosion();
+                shakeIntensity += 1.0; // Major crash
+                if(rgbPass) rgbPass.uniforms['amount'].value = 0.1; // Major Glitch
                 gameOver("IMPACT DETECTED");
             }
         }
@@ -1021,12 +1068,15 @@
         isGameOver = false; isGameRunning = true;
         score = 0; missedEnemies = 0; gameStartTime = performance.now();
         currentPhase = 0;
+        shakeIntensity = 0;
+        if(rgbPass) rgbPass.uniforms['amount'].value = 0.0015;
         setPhase(1); // Reset to green
         
         updateUI();
         document.getElementById('overlay-screen').style.display = 'none';
         enemies.forEach(e => scene.remove(e)); enemies.length = 0;
         lasers.forEach(l => scene.remove(l)); lasers.length = 0;
+        particles.forEach(p => scene.remove(p)); particles.length = 0;
         player.position.set(0, -1.0, 0);
     }
 
@@ -1057,6 +1107,38 @@
             
             player.position.x += (targetX - player.position.x) * 0.1;
             player.rotation.z = (player.position.x - targetX) * 0.1;
+            
+            // Camera Shake
+            if (shakeIntensity > 0) {
+                const shake = shakeIntensity;
+                camera.position.x = (Math.random() - 0.5) * shake;
+                camera.position.y = 1.0 + (Math.random() - 0.5) * shake;
+                camera.position.z = 6 + (Math.random() - 0.5) * shake;
+                shakeIntensity *= 0.9;
+                if(shakeIntensity < 0.01) shakeIntensity = 0;
+            } else {
+                camera.position.set(0, 1.0, 6); 
+            }
+
+            // Glitch Decay
+            if (rgbPass && rgbPass.uniforms['amount'].value > 0.002) {
+                rgbPass.uniforms['amount'].value *= 0.9;
+            }
+
+            // Particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.position.add(p.userData.velocity);
+                p.rotation.x += p.userData.rotSpeed.x;
+                p.rotation.y += p.userData.rotSpeed.y;
+                p.userData.life -= 2.0 * delta;
+                p.material.opacity = p.userData.life;
+                p.scale.setScalar(p.userData.life);
+                if (p.userData.life <= 0) {
+                    scene.remove(p);
+                    particles.splice(i, 1);
+                }
+            }
 
             for (let i = lasers.length - 1; i >= 0; i--) {
                 lasers[i].position.z -= 20 * delta;
@@ -1075,7 +1157,13 @@
 
                 if (enemies[i].position.z > 6) {
                     scene.remove(enemies[i]); enemies.splice(i, 1);
-                    missedEnemies++; AudioSys.playBreach(); updateUI();
+                    missedEnemies++; AudioSys.playBreach(); 
+                    
+                    // Breach Effects
+                    shakeIntensity += 0.3;
+                    if(rgbPass) rgbPass.uniforms['amount'].value = 0.05;
+                    
+                    updateUI();
                     if (missedEnemies >= 3) gameOver("SECURITY BREACH");
                 }
             }
