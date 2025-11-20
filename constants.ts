@@ -144,7 +144,7 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
             color: #0b0213;
             box-shadow: 0 0 20px #00ffc8, inset 0 0 20px #00ffc8;
         }
-        
+
         .control-btn {
             background: transparent;
             border: 1px solid #ff007f;
@@ -164,13 +164,15 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
         
         .leaderboard {
             width: 90%;
-            max-width: 400px;
+            max-width: 450px;
             margin-top: 20px;
             border: 2px solid #00ffc8;
             box-shadow: 0 0 15px #00ffc8;
             font-family: monospace;
             background: rgba(0, 0, 0, 0.7);
             color: #00ffc8;
+            max-height: 30vh;
+            overflow-y: auto;
         }
 
         .leaderboard h3 {
@@ -180,6 +182,8 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
             margin: 0;
             font-size: 1.1rem;
             text-shadow: none;
+            position: sticky;
+            top: 0;
         }
         
         .leaderboard table {
@@ -243,12 +247,25 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
         
         <div id="overlay-screen">
             <p class="glitch-text" id="overlay-title">SPECTRE PROTOCOL</p>
+            
+            <div id="form-container" class="hidden w-full max-w-sm flex flex-col items-center mt-4 mb-4">
+                 <p class="text-[#00ffc8] font-mono text-sm mb-2 tracking-widest animate-pulse">NEW HIGH SCORE DETECTED</p>
+                 <div class="flex gap-2 w-full justify-center">
+                    <input id="agent-name-input" type="text" maxlength="12" 
+                           class="bg-gray-900/80 border-2 border-[#ff007f] text-[#ff007f] px-3 py-2 font-mono text-center uppercase focus:outline-none focus:border-[#00ffc8] focus:shadow-[0_0_10px_#00ffc8] transition-all w-48 placeholder-pink-900" 
+                           placeholder="AGENT_ID">
+                    <button id="submit-score-btn" class="bg-[#ff007f]/20 border-2 border-[#ff007f] text-[#ff007f] px-4 py-2 font-mono hover:bg-[#ff007f] hover:text-black transition-all font-bold">
+                        UPLOAD
+                    </button>
+                 </div>
+            </div>
+
             <div id="leaderboard-display" class="leaderboard">
                 <h3>TOP 10 INTERCEPTORS</h3>
                 <table>
                     <thead><tr><th>Rank</th><th>Agent</th><th>Score</th></tr></thead>
                     <tbody id="leaderboard-body">
-                        <tr><td colspan="3" class="text-center text-xs text-pink-400">Loading Data...</td></tr>
+                        <tr><td colspan="3" class="text-center text-xs text-pink-400">Loading Neural Link...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -260,7 +277,7 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
                     WARNING: ALLOWING 3 ENEMIES TO PASS RESULTS IN SYSTEM FAILURE.
                 </p>
                 <div class="text-cyan-300 text-xs font-mono mb-6">
-                    MOVE: WASD / ARROWS / MOUSE | FIRE: SPACE / CLICK
+                    MOVE: WASD / ARROWS | FIRE: SPACE / CLICK
                 </div>
             </div>
             <button id="start-btn" class="neon-button">INITIATE PROTOCOL</button>
@@ -270,7 +287,7 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p class="text-xs text-cyan-600 font-mono">SYS.VER.8.7 // ENGINES & AUDIO FIX</p>
+            <p class="text-xs text-cyan-600 font-mono">SYS.VER.8.8 // LEADERBOARD SYNC</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-pink-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -291,7 +308,7 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
 
     import { initializeApp } from 'firebase/app';
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-    import { getFirestore, collection, query, limit, onSnapshot, addDoc, serverTimestamp, setLogLevel } from 'firebase/firestore';
+    import { getFirestore, collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp, setLogLevel } from 'firebase/firestore';
 
     const FirebaseState = {
         db: null,
@@ -344,9 +361,13 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
             document.getElementById('leaderboard-body').innerHTML = \`<tr><td colspan="3" class="text-center text-pink-400">Offline Mode</td></tr>\`;
             return;
         }
-        const scoresQuery = query(getScoresCollectionRef(), { field: 'score', direction: 'desc' }, limit(10));
+        // Fixed: Use orderBy correctly for Firestore
+        const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
+        
         onSnapshot(scoresQuery, (snapshot) => {
             renderLeaderboard(snapshot.docs.map(doc => doc.data()));
+        }, (error) => {
+            console.error("Leaderboard sync error:", error);
         });
     }
 
@@ -360,41 +381,43 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
         scores.forEach((s, index) => {
             const row = body.insertRow();
             row.insertCell(0).innerText = index + 1;
-            row.insertCell(1).innerText = s.name.substring(0, 12);
+            row.insertCell(1).innerText = s.name ? s.name.substring(0, 12) : 'UNKNOWN';
             row.insertCell(2).innerText = s.score;
         });
     }
 
-    async function submitScore(finalScore) {
-        if (!FirebaseState.db) return;
+    function submitScore() {
+        const input = document.getElementById('agent-name-input');
+        const name = input.value.trim().toUpperCase() || 'ANONYMOUS';
         
-        const inputContainer = document.createElement('div');
-        inputContainer.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9); z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center;';
-        inputContainer.innerHTML = \`
-            <div class="p-6 bg-[#0b0213] border-2 border-[#ff007f] rounded-lg shadow-xl text-center">
-                <p class="text-xl text-[#00ffc8] font-mono mb-4">NEW HIGH SCORE! INITIALS:</p>
-                <input id="score-name-input" type="text" maxlength="12" placeholder="XXX" 
-                       class="w-full p-2 mb-4 bg-gray-900 border border-[#00ffc8] text-[#ff007f] font-mono text-center rounded-sm">
-                <button id="submit-name-btn" class="neon-button text-sm p-2">SUBMIT</button>
-            </div>
-        \`;
-        document.body.appendChild(inputContainer);
+        // Retrieve final score from global
+        const finalScore = score;
 
-        return new Promise((resolve) => {
-            document.getElementById('submit-name-btn').onclick = () => {
-                const input = document.getElementById('score-name-input');
-                const name = input.value.trim() || 'ANONYMOUS';
-                document.body.removeChild(inputContainer);
-                resolve(name);
-            };
-        }).then(async (name) => {
-            await addDoc(getScoresCollectionRef(), {
+        if (FirebaseState.db) {
+            addDoc(getScoresCollectionRef(), {
                 name: name,
                 score: finalScore,
                 timestamp: serverTimestamp(),
                 userId: FirebaseState.userId,
+            }).then(() => {
+                 // Store name for next time
+                 localStorage.setItem('spectre_agent_name', name);
+                 resetOverlayToStart();
+            }).catch(e => {
+                console.error("Score upload failed", e);
+                resetOverlayToStart();
             });
-        });
+        } else {
+            // Fallback for no DB
+             resetOverlayToStart();
+        }
+    }
+    
+    function resetOverlayToStart() {
+        document.getElementById('form-container').classList.add('hidden');
+        const btn = document.getElementById('start-btn');
+        btn.innerText = "RE-INITIALIZE";
+        btn.style.display = 'block';
     }
 
     // --- FULL EDM AUDIO ENGINE ---
@@ -568,8 +591,6 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
     const COLORS = { cyan: 0x00ffc8, pink: 0xff007f, dark: 0x0b0213, neonGreen: 0x00ff88, darkGreen: 0x004411 };
     const GROUND_SIZE = 200;
     
-    // Use a function to create enemy types to ensure THREE is ready, although implicit here
-    // But we can define the config data statically
     const ENEMY_CONFIGS = [
         { name: 'STANDARD', color: 0xff007f, speed: 1.0, rot: {x: 0.02, y: 0.02}, score: 100 },
         { name: 'FAST', color: 0x00ffc8, speed: 1.5, rot: {x: 0.0, y: 0.1}, score: 150 },
@@ -625,9 +646,15 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
         });
 
         document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('submit-score-btn').addEventListener('click', submitScore);
+        
         document.getElementById('mute-btn').addEventListener('click', (e) => {
             e.target.innerText = AudioSys.toggleMute() ? "UNMUTE AUDIO" : "MUTE AUDIO";
         });
+        
+        // Pre-fill local name
+        const savedName = localStorage.getItem('spectre_agent_name');
+        if(savedName) document.getElementById('agent-name-input').value = savedName;
 
         animate(0);
     }
@@ -635,27 +662,50 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
     function setupPostProcessing(w, h) {
         composer = new EffectComposer(renderer);
         composer.addPass(new RenderPass(scene, camera));
-        // GLOW ADJUSTMENT: Threshold 0.2 ensures lasers/ships glow, but dark ground does not.
         composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.75, 0.5, 0.2));
         composer.addPass(new ShaderPass(CopyShader));
     }
 
     function createGround() {
-        const geo = new THREE.PlaneGeometry(60, GROUND_SIZE, 20, 40);
+        const width = 150;
+        const length = GROUND_SIZE;
+        const segmentsW = 50;
+        const segmentsH = 50;
+        const geo = new THREE.PlaneGeometry(width, length, segmentsW, segmentsH);
+        
+        const posAttribute = geo.attributes.position;
+        const vertex = new THREE.Vector3();
+        
+        for (let i = 0; i < posAttribute.count; i++) {
+            vertex.fromBufferAttribute(posAttribute, i);
+            const distFromCenter = Math.abs(vertex.x);
+            const safeZone = 15; 
+            
+            if (distFromCenter > safeZone) {
+                const rise = Math.pow((distFromCenter - safeZone) / 4, 2.5);
+                const noise = Math.random() * 2.5;
+                vertex.z += rise + noise;
+            }
+            posAttribute.setXYZ(i, vertex.x, vertex.y, vertex.z);
+        }
+        geo.computeVertexNormals();
+
         const mat = new THREE.MeshBasicMaterial({ 
-            color: COLORS.darkGreen, 
+            color: 0x00ff41, 
             wireframe: true, 
-            side: THREE.DoubleSide 
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.3
         });
 
         groundMesh1 = new THREE.Mesh(geo, mat);
         groundMesh1.rotation.x = -Math.PI / 2;
-        groundMesh1.position.set(0, -1.5, -GROUND_SIZE/2 + 6); 
+        groundMesh1.position.set(0, -2, -GROUND_SIZE/2 + 6); 
         scene.add(groundMesh1);
 
         groundMesh2 = new THREE.Mesh(geo, mat);
         groundMesh2.rotation.x = -Math.PI / 2;
-        groundMesh2.position.set(0, -1.5, -GROUND_SIZE/2 + 6 - GROUND_SIZE); 
+        groundMesh2.position.set(0, -2, -GROUND_SIZE/2 + 6 - GROUND_SIZE); 
         scene.add(groundMesh2);
     }
 
@@ -679,13 +729,11 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
 
     function createPlayerShip() {
         const group = new THREE.Group();
-        // Bright colors for player to ensure bloom
         const body = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.2, 3), new THREE.MeshBasicMaterial({color: 0xff007f}));
         body.rotation.x = Math.PI / 2;
         body.rotation.z = Math.PI;
         group.add(body);
 
-        // Restore Green Engines (Bright Cyan)
         const engineGeo = new THREE.BoxGeometry(0.6, 0.1, 0.1);
         const engineMat = new THREE.MeshBasicMaterial({ color: 0x00ffc8 });
         const engine = new THREE.Mesh(engineGeo, engineMat);
@@ -699,7 +747,7 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
 
     function createLaser() {
         AudioSys.playLaser();
-        const l = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1.5), new THREE.MeshBasicMaterial({color: 0xccffff})); // Very bright for bloom
+        const l = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1.5), new THREE.MeshBasicMaterial({color: 0xccffff})); 
         l.position.copy(player.position);
         l.position.z -= 1;
         lasers.push(l);
@@ -714,11 +762,9 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
         else if (typeConfig.name === 'FAST') geometry = new THREE.OctahedronGeometry(0.6, 0);
         else geometry = new THREE.IcosahedronGeometry(0.7, 0);
 
-        // Make Solid Sooner: Use MeshBasicMaterial for solid neon look + Edge Wireframe overlay
         const mat = new THREE.MeshBasicMaterial({ color: typeConfig.color }); 
         const mesh = new THREE.Mesh(geometry, mat);
         
-        // Add wireframe overlay for "tech" aesthetic while keeping it solid
         const edges = new THREE.LineSegments(
             new THREE.EdgesGeometry(geometry), 
             new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 })
@@ -731,7 +777,6 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
             scoreVal: typeConfig.score 
         };
         
-        // Spawn at random X within range
         mesh.position.set((Math.random()-0.5)*10, -1.0, -100);
         enemies.push(mesh);
         scene.add(mesh);
@@ -772,10 +817,14 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
         isGameOver = true; isGameRunning = false;
         AudioSys.stop();
         document.getElementById('overlay-title').innerText = \`\${reason}\\nSCORE: \${score}\`;
-        document.getElementById('start-btn').innerText = "RETRY";
+        
+        // Hide Start, Show Form
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('form-container').classList.remove('hidden');
+        document.getElementById('agent-name-input').focus();
+
         document.getElementById('overlay-screen').style.display = 'flex';
         document.getElementById('instructions').style.display = 'none';
-        submitScore(score);
     }
 
     function startGame() {
@@ -807,7 +856,6 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
         updateGround(delta);
 
         if (isGameRunning) {
-            // Keyboard Input Logic
             if (keys.left) targetX -= 25 * delta;
             if (keys.right) targetX += 25 * delta;
             targetX = Math.max(-8, Math.min(8, targetX));
@@ -823,11 +871,9 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
             
             const baseSpeed = 0.025 + (now - gameStartTime) / 120000 * 0.06;
             for (let i = enemies.length - 1; i >= 0; i--) {
-                // Update Z position with enemy-specific speed multiplier
                 const moveSpeed = baseSpeed * (enemies[i].userData.speedMult || 1.0);
                 enemies[i].position.z += moveSpeed * delta * 60 * 20; 
                 
-                // Rotate Enemy based on type-specific rotation speed
                 if (enemies[i].userData.rotSpeed) {
                     enemies[i].rotation.x += enemies[i].userData.rotSpeed.x;
                     enemies[i].rotation.y += enemies[i].userData.rotSpeed.y;
@@ -848,4 +894,5 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
     init();
 </script>
 </body>
-</html>`
+</html>`];
+
