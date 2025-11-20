@@ -63,12 +63,24 @@
             padding: 10px;
             border: 1px solid rgba(0, 255, 200, 0.3);
             border-radius: 4px;
+            min-width: 200px;
         }
         
         .breach-warning {
             color: #ff007f;
             font-weight: bold;
             animation: pulse-red 1s infinite;
+        }
+        
+        .powerup-active {
+            color: #ffd700;
+            text-shadow: 0 0 10px #ffd700;
+            animation: pulse-gold 0.5s infinite alternate;
+        }
+        
+        @keyframes pulse-gold {
+            from { opacity: 0.8; }
+            to { opacity: 1; text-shadow: 0 0 20px #ffd700; }
         }
 
         @keyframes pulse-red {
@@ -241,6 +253,7 @@
         <div id="hud">
             <div>SCORE: <span id="score-display">0</span></div>
             <div class="mt-2 text-red-400">BREACHES: <span id="missed-display">0</span>/3</div>
+            <div id="powerup-display" class="text-sm mt-2 font-bold"></div>
             <div id="wave-display" class="text-xs mt-1 text-pink-500 opacity-80">PHASE: INITIALIZING</div>
         </div>
         
@@ -276,7 +289,7 @@
                     WARNING: ALLOWING 3 ENEMIES TO PASS RESULTS IN SYSTEM FAILURE.
                 </p>
                 <div class="text-cyan-300 text-xs font-mono mb-6">
-                    MOVE: WASD / ARROWS | FIRE: SPACE / CLICK
+                    MOVE: WASD / ARROWS | FIRE: HOLD SPACE / CLICK
                 </div>
             </div>
             <button id="start-btn" class="neon-button">INITIATE PROTOCOL</button>
@@ -286,7 +299,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.2 // AUDIO SYNC</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.4 // SHIELD UPGRADE</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-pink-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -401,11 +414,11 @@
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
             
-            document.getElementById('sys-version').innerText = "SYS.VER.9.1 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.9.4 // LOCAL STORAGE";
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.9.1 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.9.4 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -413,7 +426,7 @@
         }, (error) => {
             console.error("Leaderboard sync error:", error);
             // Fallback to local if cloud fails mid-game
-            document.getElementById('sys-version').innerText = "SYS.VER.9.1 // SYNC ERROR";
+            document.getElementById('sys-version').innerText = "SYS.VER.9.4 // SYNC ERROR";
         });
     }
 
@@ -598,21 +611,11 @@
         scheduleNote: function(beatNumber, time) {
             const gameTime = (performance.now() - gameStartTime) / 1000;
             
-            // Phase Logic for Audio
-            // Phase 1: 0-30s (Normal)
-            // Phase 2: 30-60s (Hard)
-            // Phase 3: 60s+ (Overdrive)
-            
             const phaseInterval = 30; 
             const timeInPhase = gameTime % phaseInterval;
             const isBuildUp = (timeInPhase > 26 && gameTime > 10); // Last 4 seconds of any phase is a build up
             
-            // Build Up Logic (Snare Roll + Riser)
             if (isBuildUp) {
-                // Snare roll increases in density
-                // 26-28s: Quarter notes
-                // 28-29s: 8th notes
-                // 29-30s: 16th notes
                 let playRoll = false;
                 if (timeInPhase < 28 && beatNumber % 4 === 0) playRoll = true;
                 else if (timeInPhase >= 28 && timeInPhase < 29 && beatNumber % 2 === 0) playRoll = true;
@@ -622,12 +625,9 @@
                     this.playSnare(time);
                     this.playRiser(time, 200 + (timeInPhase - 26) * 200); // Rising pitch
                 }
-                // Mute bass/kick during build up for drop impact
                 return; 
             }
 
-            // Regular Beat Logic
-            
             // Kick
             if (beatNumber % 4 === 0) this.playKick(time);
             
@@ -635,7 +635,6 @@
             if (beatNumber === 4 || beatNumber === 12) this.playSnare(time);
             
             // HiHats
-            // More hats in later phases
             if (gameTime > 10) {
                 if (gameTime > 60) { // Overdrive hats
                      this.playHiHat(time, beatNumber % 4 === 2); // Open hat on off-beat
@@ -648,7 +647,6 @@
             }
             
             // Bass
-            // Drop Logic: Bass is heavy in the middle of phases, not at start
             if (gameTime > 5) {
                  const bassRoot = [55, 55, 65.4, 43.6][Math.floor((this.measure % 4))]; 
                  const bassIntensity = Math.min(1, gameTime / 90);
@@ -662,7 +660,6 @@
             // Lead Arp (Enter in Hard Phase)
             if (gameTime > 30 && beatNumber % 2 === 0) {
                 const arpNotes = [440, 523, 659, 880];
-                // Random arp in Hard, Fast arp in Overdrive
                 if (gameTime > 60 || Math.random() > 0.5) {
                     this.playLead(time, arpNotes[Math.floor(Math.random()*arpNotes.length)]);
                 }
@@ -699,17 +696,13 @@
             // Percussive Beat Laser (Kick/Tom Style)
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(350, time);
-            // Rapid pitch drop for the "thud"
             osc.frequency.exponentialRampToValueAtTime(60, time + 0.15);
             
             gain.gain.setValueAtTime(0.4, time);
             gain.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
             
-            osc.connect(gain);
-            gain.connect(this.ctx.destination);
-            
-            osc.start(time);
-            osc.stop(time + 0.15);
+            osc.connect(gain); gain.connect(this.ctx.destination);
+            osc.start(time); osc.stop(time + 0.15);
         },
 
         playExplosion: function() {
@@ -721,19 +714,41 @@
         playBreach: function() {
             if (this.isMuted || !this.ctx) return;
             this.playTone(150, 'sawtooth', 0.5, this.ctx.currentTime, 0.5);
+        },
+        playPowerUp: function() {
+             if (this.isMuted || !this.ctx) return;
+             // High pitched chime
+             this.playTone(880, 'sine', 0.1, this.ctx.currentTime, 0.2);
+             this.playTone(1100, 'sine', 0.2, this.ctx.currentTime + 0.1, 0.2);
+        },
+        playShieldBreak: function() {
+             if (this.isMuted || !this.ctx) return;
+             this.playNoise(0.3, 500, this.ctx.currentTime);
         }
     };
 
     let scene, camera, renderer, composer, rgbPass;
-    let player, groundMesh1, groundMesh2;
+    let player, shieldMesh, groundMesh1, groundMesh2;
     const lasers = [];
     const enemies = [];
     const particles = [];
-    const keys = { left: false, right: false };
+    const powerUps = [];
+    
+    const keys = { left: false, right: false, fire: false };
+    let isFiring = false;
+    let lastFireTime = 0;
+    
     let score = 0, missedEnemies = 0, isGameOver = false, isGameRunning = false, gameStartTime = 0;
     let currentPhase = 0; // 0: Init, 1: Normal, 2: Hard, 3: Overdrive
-    let spawnInterval = 2500, lastEnemySpawnTime = 0, targetX = 0;
+    let spawnInterval = 2500, lastEnemySpawnTime = 0, lastPowerUpSpawnTime = 0, targetX = 0;
     let shakeIntensity = 0;
+    
+    // Player State
+    const playerState = {
+        shield: false,
+        activePowerUp: 'NONE', // NONE, RAPID, SPREAD
+        powerUpEndTime: 0
+    };
     
     const COLORS = { 
         cyan: 0x00ffc8, 
@@ -742,7 +757,9 @@
         neonGreen: 0x00ff41, 
         neonCyan: 0x00ffff,
         neonMagenta: 0xff00ff,
-        darkGreen: 0x004411 
+        darkGreen: 0x004411,
+        gold: 0xffd700,
+        white: 0xffffff
     };
     const GROUND_SIZE = 200;
     
@@ -750,6 +767,12 @@
         { name: 'STANDARD', color: 0xff007f, speed: 1.0, rot: {x: 0.02, y: 0.02}, score: 100 },
         { name: 'FAST', color: 0x00ffc8, speed: 1.5, rot: {x: 0.0, y: 0.1}, score: 150 },
         { name: 'HEAVY', color: 0xff2a00, speed: 0.7, rot: {x: 0.005, y: 0.005}, score: 200 }
+    ];
+    
+    const POWERUP_TYPES = [
+        { name: 'RAPID', color: COLORS.gold, label: "RAPID FIRE" },
+        { name: 'SPREAD', color: COLORS.neonCyan, label: "SPREAD SHOT" },
+        { name: 'SHIELD', color: COLORS.white, label: "SHIELD" }
     ];
 
     function init() {
@@ -779,25 +802,40 @@
         setupPostProcessing(container.clientWidth, container.clientHeight);
 
         window.addEventListener('resize', onWindowResize);
+        
+        // Mouse / Touch Input
         container.addEventListener('mousemove', (e) => {
              const rect = renderer.domElement.getBoundingClientRect();
              targetX = ((e.clientX - rect.left) / rect.width * 2 - 1) * 8;
         });
-        container.addEventListener('click', () => { if(isGameRunning) createLaser(); });
+        container.addEventListener('mousedown', () => { keys.fire = true; });
+        container.addEventListener('mouseup', () => { keys.fire = false; });
+        container.addEventListener('touchstart', (e) => { 
+             keys.fire = true; 
+             const rect = renderer.domElement.getBoundingClientRect();
+             targetX = ((e.touches[0].clientX - rect.left) / rect.width * 2 - 1) * 8;
+             // iOS Unlock
+             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') AudioSys.unlock();
+        });
+        container.addEventListener('touchend', () => { keys.fire = false; });
+        container.addEventListener('touchmove', (e) => {
+             e.preventDefault(); // Prevent scroll
+             const rect = renderer.domElement.getBoundingClientRect();
+             targetX = ((e.touches[0].clientX - rect.left) / rect.width * 2 - 1) * 8;
+        });
 
+        // Keyboard Input
         window.addEventListener('keydown', (e) => {
             if(!isGameRunning) return;
             if (e.code === 'ArrowLeft' || e.code === 'KeyA') { keys.left = true; }
             if (e.code === 'ArrowRight' || e.code === 'KeyD') { keys.right = true; }
-            if (e.code === 'Space') {
-                if (!e.repeat) createLaser();
-                e.preventDefault();
-            }
+            if (e.code === 'Space') { keys.fire = true; e.preventDefault(); }
         });
         
         window.addEventListener('keyup', (e) => {
             if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
             if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+            if (e.code === 'Space') keys.fire = false;
         });
 
         document.getElementById('start-btn').addEventListener('click', startGame);
@@ -806,12 +844,6 @@
         document.getElementById('mute-btn').addEventListener('click', (e) => {
             e.target.innerText = AudioSys.toggleMute() ? "UNMUTE AUDIO" : "MUTE AUDIO";
         });
-        
-        document.body.addEventListener('touchstart', function() {
-             if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') {
-                 AudioSys.unlock();
-             }
-        }, { once: true });
         
         const savedName = localStorage.getItem('spectre_agent_name');
         if(savedName) document.getElementById('agent-name-input').value = savedName;
@@ -828,15 +860,10 @@
     function setupPostProcessing(w, h) {
         composer = new EffectComposer(renderer);
         composer.addPass(new RenderPass(scene, camera));
-        
-        // Bloom
         composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.75, 0.5, 0.2));
-        
-        // RGB Shift (Glitch)
         rgbPass = new ShaderPass(RGBShiftShader);
-        rgbPass.uniforms['amount'].value = 0.0015; // Minimal default shift
+        rgbPass.uniforms['amount'].value = 0.0015; 
         composer.addPass(rgbPass);
-
         composer.addPass(new ShaderPass(CopyShader));
     }
 
@@ -864,7 +891,6 @@
         }
         geo.computeVertexNormals();
 
-        // Initial Color: Neon Green
         const mat = new THREE.MeshBasicMaterial({ 
             color: COLORS.neonGreen, 
             wireframe: true, 
@@ -897,29 +923,23 @@
         currentPhase = p;
         const hud = document.getElementById('wave-display');
         
-        // THE DROP: Change colors and tempo
         if (p === 1) {
-            // Phase 1 (Green) - Normal
             hud.innerText = "PHASE: PROTOCOL START";
             hud.className = "text-xs mt-1 text-[#00ff41] opacity-80";
             groundMesh1.material.color.setHex(COLORS.neonGreen);
             AudioSys.tempo = 128;
         } else if (p === 2) {
-            // Phase 2 (Cyan) - Hard
             hud.innerText = "PHASE: HARDLINE";
             hud.className = "text-xs mt-1 text-[#00ffff] opacity-100 font-bold";
             groundMesh1.material.color.setHex(COLORS.neonCyan);
             AudioSys.tempo = 138;
-            // Flash effect
-            composer.passes[1].strength = 3.0; // Bloom spike
+            composer.passes[1].strength = 3.0; 
             setTimeout(() => { composer.passes[1].strength = 0.75; }, 500);
         } else if (p === 3) {
-            // Phase 3 (Magenta) - Overdrive
             hud.innerText = "PHASE: SYSTEM OVERDRIVE";
             hud.className = "text-xs mt-1 text-[#ff00ff] opacity-100 font-bold animate-pulse";
             groundMesh1.material.color.setHex(COLORS.neonMagenta);
             AudioSys.tempo = 150;
-             // Flash effect
             composer.passes[1].strength = 4.0;
             setTimeout(() => { composer.passes[1].strength = 0.75; }, 500);
         }
@@ -927,14 +947,9 @@
     
     function checkPhaseLogic(now) {
         const time = (now - gameStartTime) / 1000;
-        
-        if (time < 30) {
-            if (currentPhase !== 1) setPhase(1);
-        } else if (time < 60) {
-            if (currentPhase !== 2) setPhase(2);
-        } else {
-            if (currentPhase !== 3) setPhase(3);
-        }
+        if (time < 30) { if (currentPhase !== 1) setPhase(1); } 
+        else if (time < 60) { if (currentPhase !== 2) setPhase(2); } 
+        else { if (currentPhase !== 3) setPhase(3); }
     }
 
     function createStarfield() {
@@ -958,27 +973,95 @@
         const engine = new THREE.Mesh(engineGeo, engineMat);
         engine.position.set(0, 0, 0.5);
         group.add(engine);
+        
+        // Shield Mesh Group (Energy Field)
+        const shieldGroup = new THREE.Group();
+        // Inner glow
+        const shieldInnerGeo = new THREE.IcosahedronGeometry(1.4, 2);
+        const shieldInnerMat = new THREE.MeshBasicMaterial({ 
+            color: 0x00ffff, 
+            transparent: true, 
+            opacity: 0.15,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide
+        });
+        const shieldInner = new THREE.Mesh(shieldInnerGeo, shieldInnerMat);
+        shieldGroup.add(shieldInner);
+        
+        // Outer wireframe
+        const shieldOuterGeo = new THREE.IcosahedronGeometry(1.5, 1);
+        const shieldOuterMat = new THREE.MeshBasicMaterial({ 
+            color: 0x00ffff, 
+            wireframe: true, 
+            transparent: true, 
+            opacity: 0.4 
+        });
+        const shieldOuter = new THREE.Mesh(shieldOuterGeo, shieldOuterMat);
+        shieldGroup.add(shieldOuter);
+        
+        shieldMesh = shieldGroup;
+        shieldMesh.visible = false;
+        group.add(shieldMesh);
 
         player = group;
         player.position.set(0, -1.0, 0);
         scene.add(player);
     }
 
-    function createLaser() {
+    function createLaser(offsetX = 0, angleZ = 0) {
         AudioSys.playLaser();
         const l = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1.5), new THREE.MeshBasicMaterial({color: 0xccffff})); 
         l.position.copy(player.position);
+        l.position.x += offsetX;
         l.position.z -= 1;
+        l.rotation.y = -angleZ; // Rotate to angle
+        l.userData.velocity = new THREE.Vector3(Math.sin(angleZ) * 20, 0, -Math.cos(angleZ) * 20); // Calc velocity based on angle
         lasers.push(l);
         scene.add(l);
         
-        // Kickback shake
         shakeIntensity += 0.02;
+    }
+    
+    function spawnPowerUp() {
+        const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+        const geo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+        const mat = new THREE.MeshBasicMaterial({ color: type.color, wireframe: true });
+        const mesh = new THREE.Mesh(geo, mat);
+        
+        // Inner core
+        const core = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshBasicMaterial({ color: type.color }));
+        mesh.add(core);
+        
+        mesh.position.set((Math.random()-0.5)*8, -1.0, -100);
+        mesh.userData = { type: type.name, label: type.label, color: type.color };
+        
+        powerUps.push(mesh);
+        scene.add(mesh);
+        lastPowerUpSpawnTime = performance.now();
+    }
+    
+    function activatePowerUp(powerUpData) {
+        AudioSys.playPowerUp();
+        const hud = document.getElementById('powerup-display');
+        hud.innerText = powerUpData.label;
+        hud.style.color = '#' + powerUpData.color.toString(16);
+        hud.className = "text-sm mt-2 font-bold powerup-active";
+        
+        // Particles
+        spawnParticles(player.position, powerUpData.color);
+        
+        if (powerUpData.type === 'SHIELD') {
+            playerState.shield = true;
+            shieldMesh.visible = true;
+            setTimeout(() => { hud.innerText = ""; }, 2000);
+        } else {
+            playerState.activePowerUp = powerUpData.type;
+            playerState.powerUpEndTime = performance.now() + 10000; // 10 seconds
+        }
     }
 
     function spawnEnemy() {
         const typeConfig = ENEMY_CONFIGS[Math.floor(Math.random() * ENEMY_CONFIGS.length)];
-        
         let geometry;
         if (typeConfig.name === 'STANDARD') geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
         else if (typeConfig.name === 'FAST') geometry = new THREE.OctahedronGeometry(0.6, 0);
@@ -998,7 +1081,6 @@
             rotSpeed: typeConfig.rot,
             scoreVal: typeConfig.score 
         };
-        
         mesh.position.set((Math.random()-0.5)*10, -1.0, -100);
         enemies.push(mesh);
         scene.add(mesh);
@@ -1009,11 +1091,9 @@
         const count = 12;
         const geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
         const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true });
-        
         for(let i=0; i<count; i++) {
             const mesh = new THREE.Mesh(geo, mat);
             mesh.position.copy(pos);
-            
             mesh.userData.velocity = new THREE.Vector3(
                 (Math.random() - 0.5) * 0.5,
                 (Math.random() - 0.5) * 0.5,
@@ -1025,7 +1105,42 @@
                 (Math.random() - 0.5) * 0.2
             );
             mesh.userData.life = 1.0;
+            scene.add(mesh);
+            particles.push(mesh);
+        }
+    }
+    
+    function spawnShieldShatter(pos) {
+        const count = 24;
+        const geo = new THREE.ConeGeometry(0.2, 0.5, 3); // Shard shape
+        const mat = new THREE.MeshBasicMaterial({ color: COLORS.neonCyan, transparent: true });
+        for(let i=0; i<count; i++) {
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(pos);
             
+            // Randomize starting position slightly to form a sphere
+            const angle = Math.random() * Math.PI * 2;
+            const z = (Math.random() - 0.5) * 2;
+            const r = Math.sqrt(1 - z*z);
+            mesh.position.x += r * Math.cos(angle) * 1.2;
+            mesh.position.y += r * Math.sin(angle) * 1.2;
+            mesh.position.z += z * 1.2;
+
+            // Explode outwards from center
+            mesh.userData.velocity = new THREE.Vector3(
+                mesh.position.x - pos.x,
+                mesh.position.y - pos.y,
+                mesh.position.z - pos.z
+            ).normalize().multiplyScalar(Math.random() * 0.5 + 0.2);
+
+            mesh.lookAt(pos); // Point inwards/outwards
+            
+            mesh.userData.rotSpeed = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.5,
+                (Math.random() - 0.5) * 0.5,
+                (Math.random() - 0.5) * 0.5
+            );
+            mesh.userData.life = 1.5; // Last slightly longer
             scene.add(mesh);
             particles.push(mesh);
         }
@@ -1033,16 +1148,24 @@
 
     function checkCollisions() {
         const pBox = new THREE.Box3().setFromObject(player);
+        
+        // Player vs Powerups
+        for (let i = powerUps.length - 1; i >= 0; i--) {
+            if (pBox.intersectsBox(new THREE.Box3().setFromObject(powerUps[i]))) {
+                activatePowerUp(powerUps[i].userData);
+                scene.remove(powerUps[i]);
+                powerUps.splice(i, 1);
+            }
+        }
+
+        // Lasers vs Enemies
         for (let i = lasers.length - 1; i >= 0; i--) {
             const lBox = new THREE.Box3().setFromObject(lasers[i]);
             for (let j = enemies.length - 1; j >= 0; j--) {
                 if (lBox.intersectsBox(new THREE.Box3().setFromObject(enemies[j]))) {
                     AudioSys.playExplosion();
                     spawnParticles(enemies[j].position, enemies[j].material.color);
-                    
-                    // Impact Shake
                     shakeIntensity += 0.1;
-                    
                     const enemyScore = enemies[j].userData.scoreVal || 100;
                     scene.remove(enemies[j]); enemies.splice(j, 1);
                     scene.remove(lasers[i]); lasers.splice(i, 1);
@@ -1051,12 +1174,28 @@
                 }
             }
         }
-        for (const e of enemies) {
-            if (pBox.intersectsBox(new THREE.Box3().setFromObject(e))) {
-                AudioSys.playExplosion();
-                shakeIntensity += 1.0; // Major crash
-                if(rgbPass) rgbPass.uniforms['amount'].value = 0.1; // Major Glitch
-                gameOver("IMPACT DETECTED");
+        
+        // Player vs Enemies
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            if (pBox.intersectsBox(new THREE.Box3().setFromObject(enemies[i]))) {
+                if (playerState.shield) {
+                    // Shield Hit
+                    AudioSys.playShieldBreak();
+                    playerState.shield = false;
+                    shieldMesh.visible = false;
+                    spawnShieldShatter(player.position); // New shatter effect
+                    spawnParticles(enemies[i].position, enemies[i].material.color);
+                    
+                    scene.remove(enemies[i]); enemies.splice(i, 1);
+                    shakeIntensity += 0.8;
+                    if(rgbPass) rgbPass.uniforms['amount'].value = 0.03;
+                } else {
+                    // Fatal Hit
+                    AudioSys.playExplosion();
+                    shakeIntensity += 1.0; 
+                    if(rgbPass) rgbPass.uniforms['amount'].value = 0.1;
+                    gameOver("IMPACT DETECTED");
+                }
             }
         }
     }
@@ -1070,11 +1209,9 @@
         isGameOver = true; isGameRunning = false;
         AudioSys.stop();
         document.getElementById('overlay-title').innerText = `${reason}\nSCORE: ${score}`;
-        
         document.getElementById('start-btn').style.display = 'none';
         document.getElementById('form-container').classList.remove('hidden');
         document.getElementById('agent-name-input').focus();
-
         document.getElementById('overlay-screen').style.display = 'flex';
         document.getElementById('instructions').style.display = 'none';
     }
@@ -1087,6 +1224,11 @@
         score = 0; missedEnemies = 0; gameStartTime = performance.now();
         currentPhase = 0;
         shakeIntensity = 0;
+        playerState.shield = false;
+        playerState.activePowerUp = 'NONE';
+        shieldMesh.visible = false;
+        document.getElementById('powerup-display').innerText = "";
+        
         if(rgbPass) rgbPass.uniforms['amount'].value = 0.0015;
         setPhase(1); // Reset to green
         
@@ -1095,7 +1237,17 @@
         enemies.forEach(e => scene.remove(e)); enemies.length = 0;
         lasers.forEach(l => scene.remove(l)); lasers.length = 0;
         particles.forEach(p => scene.remove(p)); particles.length = 0;
+        powerUps.forEach(p => scene.remove(p)); powerUps.length = 0;
         player.position.set(0, -1.0, 0);
+        
+        // Grant Starter Items
+        setTimeout(() => {
+             activatePowerUp({ type: 'SHIELD', label: 'SYSTEM READY', color: COLORS.neonCyan });
+             // 50% chance for rapid fire too
+             if(Math.random() > 0.5) {
+                 setTimeout(() => activatePowerUp({ type: 'RAPID', label: 'WEAPONS FREE', color: COLORS.gold }), 500);
+             }
+        }, 200);
     }
 
     function onWindowResize() {
@@ -1123,8 +1275,37 @@
             const now = performance.now();
             checkPhaseLogic(now);
             
+            // Power Up Timer
+            if (playerState.activePowerUp !== 'NONE' && now > playerState.powerUpEndTime) {
+                playerState.activePowerUp = 'NONE';
+                document.getElementById('powerup-display').innerText = "";
+            }
+            
+            // Shooting Logic
+            let fireRate = 250;
+            if (playerState.activePowerUp === 'RAPID') fireRate = 100;
+            
+            if (keys.fire && now - lastFireTime > fireRate) {
+                if (playerState.activePowerUp === 'SPREAD') {
+                    createLaser(0, 0);
+                    createLaser(-0.5, 0.1); // Left angled
+                    createLaser(0.5, -0.1); // Right angled
+                } else {
+                    createLaser(0, 0);
+                }
+                lastFireTime = now;
+            }
+            
             player.position.x += (targetX - player.position.x) * 0.1;
             player.rotation.z = (player.position.x - targetX) * 0.1;
+            
+            // Shield Pulse & Rotation
+            if (shieldMesh.visible) {
+                shieldMesh.rotation.y += delta;
+                shieldMesh.rotation.z += delta * 0.5;
+                const pulse = 1.0 + Math.sin(now * 0.005) * 0.1;
+                shieldMesh.scale.setScalar(pulse);
+            }
             
             // Camera Shake
             if (shakeIntensity > 0) {
@@ -1138,7 +1319,6 @@
                 camera.position.set(0, 1.0, 6); 
             }
 
-            // Glitch Decay
             if (rgbPass && rgbPass.uniforms['amount'].value > 0.002) {
                 rgbPass.uniforms['amount'].value *= 0.9;
             }
@@ -1148,45 +1328,59 @@
                 const p = particles[i];
                 p.position.add(p.userData.velocity);
                 p.rotation.x += p.userData.rotSpeed.x;
-                p.rotation.y += p.userData.rotSpeed.y;
                 p.userData.life -= 2.0 * delta;
                 p.material.opacity = p.userData.life;
                 p.scale.setScalar(p.userData.life);
-                if (p.userData.life <= 0) {
-                    scene.remove(p);
-                    particles.splice(i, 1);
-                }
+                if (p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
             }
 
+            // Lasers
             for (let i = lasers.length - 1; i >= 0; i--) {
-                lasers[i].position.z -= 20 * delta;
+                if (lasers[i].userData.velocity) {
+                    // Use velocity for spread shot
+                    lasers[i].position.x += lasers[i].userData.velocity.x * delta;
+                    lasers[i].position.z += lasers[i].userData.velocity.z * delta;
+                } else {
+                    lasers[i].position.z -= 20 * delta;
+                }
+                
                 if (lasers[i].position.z < -100) { scene.remove(lasers[i]); lasers.splice(i, 1); }
+            }
+            
+            // Powerups Move
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                powerUps[i].position.z += 10 * delta;
+                powerUps[i].rotation.x += delta;
+                powerUps[i].rotation.y += delta;
+                if (powerUps[i].position.z > 6) { scene.remove(powerUps[i]); powerUps.splice(i, 1); }
             }
             
             const baseSpeed = 0.025 + (now - gameStartTime) / 120000 * 0.06;
             for (let i = enemies.length - 1; i >= 0; i--) {
                 const moveSpeed = baseSpeed * (enemies[i].userData.speedMult || 1.0);
                 enemies[i].position.z += moveSpeed * delta * 60 * 20; 
-                
                 if (enemies[i].userData.rotSpeed) {
                     enemies[i].rotation.x += enemies[i].userData.rotSpeed.x;
                     enemies[i].rotation.y += enemies[i].userData.rotSpeed.y;
                 }
-
                 if (enemies[i].position.z > 6) {
                     scene.remove(enemies[i]); enemies.splice(i, 1);
                     missedEnemies++; AudioSys.playBreach(); 
-                    
-                    // Breach Effects
                     shakeIntensity += 0.3;
                     if(rgbPass) rgbPass.uniforms['amount'].value = 0.05;
-                    
                     updateUI();
                     if (missedEnemies >= 3) gameOver("SECURITY BREACH");
                 }
             }
 
             if (now - lastEnemySpawnTime > Math.max(600, 2500 - (now - gameStartTime)/120000*1900)) spawnEnemy();
+            
+            // Spawn Powerups (Rare)
+            if (now - lastPowerUpSpawnTime > 15000) { // Every 15s check
+                if (Math.random() > 0.3) spawnPowerUp(); // 70% chance
+                else lastPowerUpSpawnTime = now; // Reset timer if missed to avoid spam checking
+            }
+            
             checkCollisions();
         }
         composer.render();
