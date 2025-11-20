@@ -1489,7 +1489,17 @@
         mesh.userData = { speedMult, rotSpeed, scoreVal };
         
         if (startPos) mesh.position.copy(startPos);
-        else mesh.position.set((Math.random()-0.5)*10, -1.0, -100);
+        else {
+            // Random spawn logic
+            // If score > 5000 (after first boss), enemies can fly at different heights
+            // otherwise, ground only.
+            const use3DSpawn = score > 5000;
+            const yPos = use3DSpawn ? (Math.random() * 5) - 1.5 : -1.0;
+            // Clamp Y to playable area roughly -1.5 to 3.5
+            const finalY = Math.max(-1.5, Math.min(3.5, yPos));
+            
+            mesh.position.set((Math.random()-0.5)*10, finalY, -100);
+        }
         
         enemies.push(mesh);
         scene.add(mesh);
