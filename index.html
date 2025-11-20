@@ -446,9 +446,11 @@
     <!-- iOS Install Overlay Guide -->
     <div id="ios-install-guide">
         <p class="text-[#00ffc8] font-mono text-lg mb-2 font-bold">INSTALL PROTOCOL</p>
-        <p class="text-white font-mono text-sm mb-4 leading-relaxed">
-            1. Tap the <span class="text-blue-400 font-bold text-xl mx-1">⎋</span> Share button below.<br>
-            2. Scroll down and select <span class="text-white font-bold border border-gray-600 px-1 rounded bg-gray-800 text-xs">Add to Home Screen</span>.
+        <p class="text-white font-mono text-sm mb-4 leading-relaxed text-left pl-8">
+            1. Tap <span class="font-bold text-lg">•••</span> (Three Dots).<br>
+            2. Tap <span class="text-blue-400 font-bold text-xl mx-1">⎋</span> Share.<br>
+            3. Tap <span class="font-bold">More...</span><br>
+            4. Select <span class="text-white font-bold border border-gray-600 px-1 rounded bg-gray-800 text-xs">Add to Home Screen</span>.
         </p>
         <button id="close-guide-btn" class="text-pink-500 font-mono text-sm border border-pink-500 px-4 py-1 rounded hover:bg-pink-500 hover:text-white transition-colors">
             CLOSE
@@ -459,7 +461,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0 // STEALTH OPS</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.1 // STEALTH OPS</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -566,7 +568,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.0 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.0.1 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -574,7 +576,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.0 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.0.1 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
