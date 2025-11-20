@@ -1,4 +1,3 @@
-
 export const GEMINI_MODEL = 'gemini-2.5-flash';
 
 export const INITIAL_GAME_CODE = `<!DOCTYPE html>
@@ -105,6 +104,8 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
             z-index: 100;
             text-align: center;
             backdrop-filter: blur(5px);
+            padding-bottom: 140px;
+            box-sizing: border-box;
         }
         
         .glitch-text {
@@ -922,4 +923,4 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
     init();
 </script>
 </body>
-</html>`];
+</html>`;
