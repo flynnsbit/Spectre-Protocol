@@ -299,7 +299,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.4 // SHIELD UPGRADE</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.5 // RGB SHIELD</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-pink-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -414,11 +414,11 @@
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
             
-            document.getElementById('sys-version').innerText = "SYS.VER.9.4 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.9.5 // LOCAL STORAGE";
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.9.4 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.9.5 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -426,7 +426,7 @@
         }, (error) => {
             console.error("Leaderboard sync error:", error);
             // Fallback to local if cloud fails mid-game
-            document.getElementById('sys-version').innerText = "SYS.VER.9.4 // SYNC ERROR";
+            document.getElementById('sys-version').innerText = "SYS.VER.9.5 // SYNC ERROR";
         });
     }
 
@@ -974,30 +974,27 @@
         engine.position.set(0, 0, 0.5);
         group.add(engine);
         
-        // Shield Mesh Group (Energy Field)
+        // Shield Mesh Group (RGB Wireframe)
         const shieldGroup = new THREE.Group();
-        // Inner glow
-        const shieldInnerGeo = new THREE.IcosahedronGeometry(1.4, 2);
-        const shieldInnerMat = new THREE.MeshBasicMaterial({ 
-            color: 0x00ffff, 
-            transparent: true, 
-            opacity: 0.15,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide
-        });
-        const shieldInner = new THREE.Mesh(shieldInnerGeo, shieldInnerMat);
-        shieldGroup.add(shieldInner);
         
-        // Outer wireframe
-        const shieldOuterGeo = new THREE.IcosahedronGeometry(1.5, 1);
-        const shieldOuterMat = new THREE.MeshBasicMaterial({ 
-            color: 0x00ffff, 
-            wireframe: true, 
-            transparent: true, 
-            opacity: 0.4 
-        });
-        const shieldOuter = new THREE.Mesh(shieldOuterGeo, shieldOuterMat);
-        shieldGroup.add(shieldOuter);
+        const geo = new THREE.IcosahedronGeometry(0.75, 1);
+        
+        // Red Layer
+        const matR = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
+        const shieldR = new THREE.Mesh(geo, matR);
+        shieldGroup.add(shieldR);
+
+        // Green Layer
+        const matG = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
+        const shieldG = new THREE.Mesh(geo, matG);
+        shieldG.scale.setScalar(1.01); 
+        shieldGroup.add(shieldG);
+
+        // Blue Layer
+        const matB = new THREE.MeshBasicMaterial({ color: 0x0000ff, wireframe: true, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
+        const shieldB = new THREE.Mesh(geo, matB);
+        shieldB.scale.setScalar(1.02); 
+        shieldGroup.add(shieldB);
         
         shieldMesh = shieldGroup;
         shieldMesh.visible = false;
@@ -1024,16 +1021,52 @@
     
     function spawnPowerUp() {
         const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
-        const geo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
-        const mat = new THREE.MeshBasicMaterial({ color: type.color, wireframe: true });
-        const mesh = new THREE.Mesh(geo, mat);
         
-        // Inner core
-        const core = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshBasicMaterial({ color: type.color }));
-        mesh.add(core);
+        let mesh;
+        
+        if (type.name === 'SHIELD') {
+             // RGB Pulsating Sphere
+             mesh = new THREE.Group();
+             const geo = new THREE.IcosahedronGeometry(0.5, 1);
+             
+             // Red
+             const matR = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
+             const mR = new THREE.Mesh(geo, matR);
+             mesh.add(mR);
+             
+             // Green
+             const matG = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+             const mG = new THREE.Mesh(geo, matG);
+             mG.scale.setScalar(0.85);
+             mesh.add(mG);
+             
+             // Blue
+             const matB = new THREE.MeshBasicMaterial({ color: 0x0000ff, wireframe: true });
+             const mB = new THREE.Mesh(geo, matB);
+             mB.scale.setScalar(0.7);
+             mesh.add(mB);
+             
+             // White core
+             const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), new THREE.MeshBasicMaterial({color: 0xffffff}));
+             mesh.add(core);
+             
+             mesh.userData.isRGB = true;
+        } else {
+            const geo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+            const mat = new THREE.MeshBasicMaterial({ color: type.color, wireframe: true });
+            mesh = new THREE.Mesh(geo, mat);
+            
+            // Inner core
+            const core = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshBasicMaterial({ color: type.color }));
+            mesh.add(core);
+        }
         
         mesh.position.set((Math.random()-0.5)*8, -1.0, -100);
-        mesh.userData = { type: type.name, label: type.label, color: type.color };
+        
+        // Set UserData
+        mesh.userData.type = type.name;
+        mesh.userData.label = type.label;
+        mesh.userData.color = type.color;
         
         powerUps.push(mesh);
         scene.add(mesh);
@@ -1240,14 +1273,6 @@
         powerUps.forEach(p => scene.remove(p)); powerUps.length = 0;
         player.position.set(0, -1.0, 0);
         
-        // Grant Starter Items
-        setTimeout(() => {
-             activatePowerUp({ type: 'SHIELD', label: 'SYSTEM READY', color: COLORS.neonCyan });
-             // 50% chance for rapid fire too
-             if(Math.random() > 0.5) {
-                 setTimeout(() => activatePowerUp({ type: 'RAPID', label: 'WEAPONS FREE', color: COLORS.gold }), 500);
-             }
-        }, 200);
     }
 
     function onWindowResize() {
@@ -1301,10 +1326,18 @@
             
             // Shield Pulse & Rotation
             if (shieldMesh.visible) {
-                shieldMesh.rotation.y += delta;
-                shieldMesh.rotation.z += delta * 0.5;
-                const pulse = 1.0 + Math.sin(now * 0.005) * 0.1;
+                const pulse = 1.0 + Math.sin(now * 0.005) * 0.05;
                 shieldMesh.scale.setScalar(pulse);
+                
+                // Rotate layers independently for RGB interference
+                shieldMesh.children[0].rotation.x += delta * 0.5;
+                shieldMesh.children[0].rotation.y += delta * 0.5;
+                
+                shieldMesh.children[1].rotation.x -= delta * 0.3;
+                shieldMesh.children[1].rotation.y += delta * 0.8;
+                
+                shieldMesh.children[2].rotation.x += delta * 0.7;
+                shieldMesh.children[2].rotation.y -= delta * 0.4;
             }
             
             // Camera Shake
@@ -1349,10 +1382,24 @@
             
             // Powerups Move
             for (let i = powerUps.length - 1; i >= 0; i--) {
-                powerUps[i].position.z += 10 * delta;
-                powerUps[i].rotation.x += delta;
-                powerUps[i].rotation.y += delta;
-                if (powerUps[i].position.z > 6) { scene.remove(powerUps[i]); powerUps.splice(i, 1); }
+                const p = powerUps[i];
+                p.position.z += 10 * delta;
+                
+                if (p.userData.isRGB) {
+                    // Rotate RGB layers
+                    p.children[0].rotation.x += delta * 2;
+                    p.children[1].rotation.y += delta * 2;
+                    p.children[2].rotation.z += delta * 2;
+                    
+                    // Pulsate
+                    const s = 1.0 + Math.sin(now * 0.005) * 0.2;
+                    p.scale.setScalar(s);
+                } else {
+                    p.rotation.x += delta;
+                    p.rotation.y += delta;
+                }
+
+                if (p.position.z > 6) { scene.remove(p); powerUps.splice(i, 1); }
             }
             
             const baseSpeed = 0.025 + (now - gameStartTime) / 120000 * 0.06;
