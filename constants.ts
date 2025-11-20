@@ -1,3 +1,4 @@
+
 export const GEMINI_MODEL = 'gemini-2.5-flash';
 
 export const INITIAL_GAME_CODE = `<!DOCTYPE html>
@@ -311,26 +312,55 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
     import { getFirestore, collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp, setLogLevel } from 'firebase/firestore';
 
+    // --- CONFIGURATION ---
+    // PASTE YOUR FIREBASE CONFIG HERE TO ENABLE MULTI-USER CLOUD LEADERBOARDS
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyDV7eXu5ERIic4pdE99qfoiH-_-uELJEgw",
+      authDomain: "spectreprotocol-c21c5.firebaseapp.com",
+      projectId: "spectreprotocol-c21c5",
+      storageBucket: "spectreprotocol-c21c5.firebasestorage.app",
+      messagingSenderId: "964619451248",
+      appId: "1:964619451248:web:0adbc90162d36db6412db5",
+      measurementId: "G-WFK1184JWY"
+    };
+    
     const FirebaseState = {
         db: null,
         auth: null,
         userId: null
     };
 
-    const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+    // Check if config is provided via injection (dev env) or via the constant above (prod/github pages)
+    const injectedConfig = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+    
+    let activeConfig = {};
+    if (injectedConfig && injectedConfig !== '{}') {
+        activeConfig = JSON.parse(injectedConfig);
+    } else if (Object.keys(FIREBASE_CONFIG).length > 0) {
+        activeConfig = FIREBASE_CONFIG;
+    }
+
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
     const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-    if (Object.keys(firebaseConfig).length > 0) {
-        const app = initializeApp(firebaseConfig);
-        FirebaseState.db = getFirestore(app);
-        FirebaseState.auth = getAuth(app);
-        setLogLevel('error');
+    if (Object.keys(activeConfig).length > 0 && activeConfig.apiKey) {
+        try {
+            const app = initializeApp(activeConfig);
+            FirebaseState.db = getFirestore(app);
+            FirebaseState.auth = getAuth(app);
+            setLogLevel('error');
+        } catch (e) {
+            console.error("Firebase Init Error:", e);
+        }
     }
 
     async function initializeFirebase() {
         const auth = FirebaseState.auth;
-        if (!auth) return;
+        if (!auth) {
+            // Explicitly trigger fallback if no auth
+            setupLeaderboardListener();
+            return;
+        }
         try {
             if (initialAuthToken) {
                 await signInWithCustomToken(auth, initialAuthToken);
@@ -360,6 +390,7 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
     function setupLeaderboardListener() {
         if (!FirebaseState.db) {
             // Local Storage Fallback
+            console.log("Using Local Storage for Leaderboard");
             const localScores = JSON.parse(localStorage.getItem('spectre_local_leaderboard') || '[]');
             if (localScores.length === 0) {
                  // Initial Dummy Data so it looks cool
@@ -376,12 +407,15 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
             return;
         }
         
+        document.getElementById('sys-version').innerText = "SYS.VER.8.9 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
             renderLeaderboard(snapshot.docs.map(doc => doc.data()));
         }, (error) => {
             console.error("Leaderboard sync error:", error);
+            // Fallback to local if cloud fails mid-game
+            document.getElementById('sys-version').innerText = "SYS.VER.8.9 // SYNC ERROR";
         });
     }
 
@@ -416,23 +450,24 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
                  resetOverlayToStart();
             }).catch(e => {
                 console.error("Score upload failed", e);
+                // Fallback save to local
+                saveLocalScore(name, finalScore);
                 resetOverlayToStart();
             });
         } else {
-            // Local Storage Fallback
-            const localScores = JSON.parse(localStorage.getItem('spectre_local_leaderboard') || '[]');
-            localScores.push({ name: name, score: finalScore, timestamp: Date.now() });
-            
-            // Sort and keep top 10
-            localScores.sort((a, b) => b.score - a.score);
-            const top10 = localScores.slice(0, 10);
-            
-            localStorage.setItem('spectre_local_leaderboard', JSON.stringify(top10));
-            renderLeaderboard(top10);
-            
-            localStorage.setItem('spectre_agent_name', name);
+            saveLocalScore(name, finalScore);
             resetOverlayToStart();
         }
+    }
+    
+    function saveLocalScore(name, finalScore) {
+        const localScores = JSON.parse(localStorage.getItem('spectre_local_leaderboard') || '[]');
+        localScores.push({ name: name, score: finalScore, timestamp: Date.now() });
+        localScores.sort((a, b) => b.score - a.score);
+        const top10 = localScores.slice(0, 10);
+        localStorage.setItem('spectre_local_leaderboard', JSON.stringify(top10));
+        renderLeaderboard(top10);
+        localStorage.setItem('spectre_agent_name', name);
     }
     
     function resetOverlayToStart() {
