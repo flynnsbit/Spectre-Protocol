@@ -1,4 +1,5 @@
 {
   "name": "Spectre Protocol",
-  "description": "Space Shooter, Synth, Spectral "
+  "description": "Space Shooter, Synth, Spectral ",
+  "requestFramePermissions": []
 }

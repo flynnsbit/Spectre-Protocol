@@ -848,6 +848,11 @@
     let targetY = -1.0;
     let shakeIntensity = 0;
     
+    // Player Health System
+    let playerHP = 3;
+    let playerInvulnerableUntil = 0;
+    let baseShipScale = 1.0;
+    
     // Death Sequence State
     let isDying = false;
     let deathStartTime = 0;
@@ -919,6 +924,7 @@
         createStarfield();
         setupPostProcessing(container.clientWidth, container.clientHeight);
         setupMobileControls();
+        checkOrientation();
 
         window.addEventListener('resize', onWindowResize);
         
@@ -970,6 +976,14 @@
         }, 1000);
 
         animate(0);
+    }
+    
+    function checkOrientation() {
+        if(!player) return;
+        // Reduce ship size in Portrait mode (Phones) to make dodging easier
+        const isPortrait = window.innerHeight > window.innerWidth;
+        baseShipScale = isPortrait ? 0.5 : 1.0;
+        if(!isDying) player.scale.setScalar(baseShipScale);
     }
     
     function setupMobileControls() {
@@ -1516,9 +1530,31 @@
                     shakeIntensity += 1.5;
                     if(rgbPass) rgbPass.uniforms['amount'].value = 0.05;
                 } else {
-                    // Fatal
-                    AudioSys.playExplosion();
-                    startDeathSequence();
+                    // Check HP
+                    const now = performance.now();
+                    if (now < playerInvulnerableUntil) return; // Ignore hit if invulnerable
+
+                    playerHP--;
+                    if (playerHP <= 0) {
+                         // Fatal
+                         AudioSys.playExplosion();
+                         startDeathSequence();
+                    } else {
+                        // Damage Taken
+                        AudioSys.playExplosion();
+                        shakeIntensity += 1.0;
+                        if(rgbPass) rgbPass.uniforms['amount'].value = 0.15;
+                        playerInvulnerableUntil = now + 2000; // 2 seconds invulnerability
+                        spawnHullDebris(player.position); // Visual flair
+                        
+                        // Flash red
+                        frameMesh.material.color.setHex(0xff0000);
+                        setTimeout(() => { if(!isDying && !isGameOver) frameMesh.material.color.setHex(COLORS.pink); }, 200);
+                        
+                        // Remove enemy
+                        spawnParticles(enemies[i].position, enemies[i].material.color);
+                        scene.remove(enemies[i]); enemies.splice(i, 1);
+                    }
                 }
             }
         }
@@ -1558,11 +1594,14 @@
         playerState.shield = false;
         playerState.activePowerUp = 'NONE';
         
+        playerHP = 3; // Allow 2 hits (HP 3 -> 2 -> 1 -> Dead)
+        playerInvulnerableUntil = 0;
+        checkOrientation();
+        
         // Reset Ship
         hullMesh.visible = false;
         // CHANGED: Reset color to Pink instead of Cyan
         frameMesh.material.color.setHex(COLORS.pink);
-        player.scale.setScalar(1);
         
         document.getElementById('powerup-display').innerText = "";
         targetX = 0;
@@ -1590,6 +1629,7 @@
         camera.updateProjectionMatrix();
         renderer.setSize(c.clientWidth, c.clientHeight);
         composer.setSize(c.clientWidth, c.clientHeight);
+        checkOrientation();
     }
 
     let lastTime = 0;
@@ -1619,7 +1659,7 @@
                 player.position.y += (Math.random()-0.5) * 0.5;
                 
                 // Bloat
-                const scale = 1.0 + deathProgress * 2.0; 
+                const scale = baseShipScale * (1.0 + deathProgress * 2.0); 
                 player.scale.setScalar(scale);
                 
                 // RGB Pass Max
@@ -1636,7 +1676,12 @@
                 composer.render();
                 return; // Skip rest of logic
             } else {
-                player.visible = true;
+                // Blink if invulnerable
+                if (now < playerInvulnerableUntil) {
+                    player.visible = Math.floor(now / 100) % 2 === 0;
+                } else {
+                    player.visible = true;
+                }
             }
             
             // Normal Game Logic inputs
