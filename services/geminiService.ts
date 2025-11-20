@@ -1,15 +1,20 @@
 import { GoogleGenAI } from "@google/genai";
 import { GEMINI_MODEL } from '../constants';
 
-// Initialize the Gemini API client
-// The API key is assumed to be available in process.env.API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 /**
  * Sends the current code and a user request to Gemini to generate updated code.
+ * Now requires the API key to be passed in, allowing for "Bring Your Own Key" 
+ * usage on static hosts like GitHub Pages.
  */
-export const modifyGameCode = async (currentCode: string, userRequest: string): Promise<string> => {
+export const modifyGameCode = async (currentCode: string, userRequest: string, apiKey: string): Promise<string> => {
+  if (!apiKey) {
+    throw new Error("API Key is missing. Please set it in the settings.");
+  }
+
   try {
+    // Initialize the client dynamically with the provided key
+    const ai = new GoogleGenAI({ apiKey });
+
     const systemInstruction = `
       You are an expert HTML5 and JavaScript game developer. 
       The user will provide existing HTML game code and a request to modify it.

@@ -287,7 +287,7 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p class="text-xs text-cyan-600 font-mono">SYS.VER.8.8 // LEADERBOARD SYNC</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.8.9 // LEADERBOARD SYNC</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-pink-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -358,10 +358,23 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
 
     function setupLeaderboardListener() {
         if (!FirebaseState.db) {
-            document.getElementById('leaderboard-body').innerHTML = \`<tr><td colspan="3" class="text-center text-pink-400">Offline Mode</td></tr>\`;
+            // Local Storage Fallback
+            const localScores = JSON.parse(localStorage.getItem('spectre_local_leaderboard') || '[]');
+            if (localScores.length === 0) {
+                 // Initial Dummy Data so it looks cool
+                 localScores.push(
+                     {name: 'SPECTRE', score: 5000},
+                     {name: 'GHOST', score: 3500},
+                     {name: 'PHANTOM', score: 2000}
+                 );
+                 localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
+            }
+            renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
+            
+            document.getElementById('sys-version').innerText = "SYS.VER.8.9 // LOCAL STORAGE";
             return;
         }
-        // Fixed: Use orderBy correctly for Firestore
+        
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -389,8 +402,6 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
     function submitScore() {
         const input = document.getElementById('agent-name-input');
         const name = input.value.trim().toUpperCase() || 'ANONYMOUS';
-        
-        // Retrieve final score from global
         const finalScore = score;
 
         if (FirebaseState.db) {
@@ -400,7 +411,6 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
                 timestamp: serverTimestamp(),
                 userId: FirebaseState.userId,
             }).then(() => {
-                 // Store name for next time
                  localStorage.setItem('spectre_agent_name', name);
                  resetOverlayToStart();
             }).catch(e => {
@@ -408,8 +418,19 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
                 resetOverlayToStart();
             });
         } else {
-            // Fallback for no DB
-             resetOverlayToStart();
+            // Local Storage Fallback
+            const localScores = JSON.parse(localStorage.getItem('spectre_local_leaderboard') || '[]');
+            localScores.push({ name: name, score: finalScore, timestamp: Date.now() });
+            
+            // Sort and keep top 10
+            localScores.sort((a, b) => b.score - a.score);
+            const top10 = localScores.slice(0, 10);
+            
+            localStorage.setItem('spectre_local_leaderboard', JSON.stringify(top10));
+            renderLeaderboard(top10);
+            
+            localStorage.setItem('spectre_agent_name', name);
+            resetOverlayToStart();
         }
     }
     
@@ -655,6 +676,13 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
         // Pre-fill local name
         const savedName = localStorage.getItem('spectre_agent_name');
         if(savedName) document.getElementById('agent-name-input').value = savedName;
+        
+        // Fallback trigger if auth never connects (covers the case where firebase is unconfigured)
+        setTimeout(() => {
+            if (!FirebaseState.db) {
+                setupLeaderboardListener();
+            }
+        }, 1000);
 
         animate(0);
     }
@@ -895,4 +923,3 @@ export const INITIAL_GAME_CODE = `<!DOCTYPE html>
 </script>
 </body>
 </html>`];
-
