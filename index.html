@@ -250,7 +250,7 @@
         #mobile-controls {
             display: none;
             position: absolute;
-            bottom: 40px; /* Above the bottom bar */
+            bottom: 80px; /* Raised to 80px to avoid iOS home bar and UI overlap */
             left: 0;
             width: 100%;
             height: 140px;
@@ -326,7 +326,7 @@
             .glitch-text { font-size: 2rem; }
             .leaderboard { width: 95%; }
             
-            #mobile-controls { display: flex; }
+            /* #mobile-controls { display: flex; }  -- Handled via JS now for broader support */
             #instructions .text-cyan-300 { display: none; } /* Hide keyboard instructions on mobile */
             
             h1 { font-size: 1.2rem; }
@@ -992,91 +992,96 @@
     }
     
     function setupMobileControls() {
-        const joystickContainer = document.getElementById('joystick-container');
-        const joystickKnob = document.getElementById('joystick-knob');
-        const fireBtn = document.getElementById('fire-btn-mobile');
+        // Check if touch device regardless of screen width to support iPads/Tablets
+        const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         
-        // Joystick Logic
-        let touchId = null;
-        const maxRadius = 35; // limit knob movement
-        
-        joystickContainer.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if(touchId !== null) return;
-            const touch = e.changedTouches[0];
-            touchId = touch.identifier;
-            updateJoystick(touch);
-        });
-        
-        joystickContainer.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            for(let i=0; i<e.changedTouches.length; i++) {
-                if(e.changedTouches[i].identifier === touchId) {
-                    updateJoystick(e.changedTouches[i]);
-                    break;
+        if (isTouch) {
+            // Force display controls
+            const controls = document.getElementById('mobile-controls');
+            controls.style.display = 'flex';
+            
+            // Hide desktop-specific text
+            const desktopInstr = document.querySelector('#instructions .text-cyan-300');
+            if(desktopInstr) desktopInstr.style.display = 'none';
+            
+            const joystickContainer = document.getElementById('joystick-container');
+            const joystickKnob = document.getElementById('joystick-knob');
+            const fireBtn = document.getElementById('fire-btn-mobile');
+            
+            // Joystick Logic
+            let touchId = null;
+            const maxRadius = 35; // limit knob movement
+            
+            joystickContainer.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if(touchId !== null) return;
+                const touch = e.changedTouches[0];
+                touchId = touch.identifier;
+                updateJoystick(touch);
+            });
+            
+            joystickContainer.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                for(let i=0; i<e.changedTouches.length; i++) {
+                    if(e.changedTouches[i].identifier === touchId) {
+                        updateJoystick(e.changedTouches[i]);
+                        break;
+                    }
                 }
-            }
-        });
-        
-        const resetJoystick = (e) => {
-            e.preventDefault();
-            for(let i=0; i<e.changedTouches.length; i++) {
-                if(e.changedTouches[i].identifier === touchId) {
-                    touchId = null;
-                    joystickKnob.style.transform = `translate(-50%, -50%)`;
-                    // Optional: Auto-center ship on release
-                    // targetX = 0; targetY = 1.0; 
-                    break;
+            });
+            
+            const resetJoystick = (e) => {
+                e.preventDefault();
+                for(let i=0; i<e.changedTouches.length; i++) {
+                    if(e.changedTouches[i].identifier === touchId) {
+                        touchId = null;
+                        joystickKnob.style.transform = `translate(-50%, -50%)`;
+                        break;
+                    }
                 }
+            };
+            
+            joystickContainer.addEventListener('touchend', resetJoystick);
+            joystickContainer.addEventListener('touchcancel', resetJoystick);
+            
+            function updateJoystick(touch) {
+                const rect = joystickContainer.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                
+                const dx = touch.clientX - centerX;
+                const dy = touch.clientY - centerY;
+                const distance = Math.min(Math.sqrt(dx*dx + dy*dy), maxRadius);
+                const angle = Math.atan2(dy, dx);
+                
+                const knobX = Math.cos(angle) * distance;
+                const knobY = Math.sin(angle) * distance;
+                
+                joystickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+                
+                const normX = knobX / maxRadius;
+                const normY = knobY / maxRadius; 
+                
+                targetX = normX * 8.0;
+                targetY = 1.0 + (-normY * 2.5);
+                
+                targetX = Math.max(-8, Math.min(8, targetX));
+                targetY = Math.max(-1.5, Math.min(3.5, targetY));
             }
-        };
-        
-        joystickContainer.addEventListener('touchend', resetJoystick);
-        joystickContainer.addEventListener('touchcancel', resetJoystick);
-        
-        function updateJoystick(touch) {
-            const rect = joystickContainer.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
             
-            const dx = touch.clientX - centerX;
-            const dy = touch.clientY - centerY;
-            const distance = Math.min(Math.sqrt(dx*dx + dy*dy), maxRadius);
-            const angle = Math.atan2(dy, dx);
+            // Fire Button Logic
+            fireBtn.addEventListener('touchstart', (e) => {
+                 e.preventDefault();
+                 keys.fire = true;
+                 fireBtn.style.background = "rgba(255, 0, 127, 0.6)";
+            });
             
-            const knobX = Math.cos(angle) * distance;
-            const knobY = Math.sin(angle) * distance;
-            
-            joystickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
-            
-            // Map normalized joystick vector (-1 to 1) to game coordinates
-            // x: -1 to 1 -> targetX: -8 to 8
-            // y: -1 to 1 -> targetY: -1.5 to 3.5
-            
-            const normX = knobX / maxRadius;
-            const normY = knobY / maxRadius; // Down is positive in screen space, but we want Up positive
-            
-            targetX = normX * 8.0;
-            // Invert Y because screen Y is down, game Y up
-            // Base Y is 1.0. Range +/- 2.5
-            targetY = 1.0 + (-normY * 2.5);
-            
-            targetX = Math.max(-8, Math.min(8, targetX));
-            targetY = Math.max(-1.5, Math.min(3.5, targetY));
+            fireBtn.addEventListener('touchend', (e) => {
+                 e.preventDefault();
+                 keys.fire = false;
+                 fireBtn.style.background = "rgba(255, 0, 127, 0.2)";
+            });
         }
-        
-        // Fire Button Logic
-        fireBtn.addEventListener('touchstart', (e) => {
-             e.preventDefault();
-             keys.fire = true;
-             fireBtn.style.background = "rgba(255, 0, 127, 0.6)";
-        });
-        
-        fireBtn.addEventListener('touchend', (e) => {
-             e.preventDefault();
-             keys.fire = false;
-             fireBtn.style.background = "rgba(255, 0, 127, 0.2)";
-        });
     }
 
     function setupPostProcessing(w, h) {
