@@ -327,6 +327,24 @@
             color: #fff;
             box-shadow: 0 0 30px #00ffc8;
         }
+        
+        /* iOS Install Guide */
+        #ios-install-guide {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(11, 2, 19, 0.95);
+            border-top: 2px solid #00ffc8;
+            padding: 20px;
+            padding-bottom: 50px;
+            z-index: 200;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
 
         @media (max-width: 768px) {
             #ui-panel {
@@ -417,7 +435,25 @@
                 </div>
             </div>
             <button id="start-btn" class="neon-button">INITIATE PROTOCOL</button>
+            
+            <!-- iOS Install Button (Hidden by default) -->
+            <button id="ios-install-btn" class="mt-4 border border-[#00ffc8] text-[#00ffc8] bg-transparent px-4 py-2 font-mono text-xs rounded hover:bg-[#00ffc8] hover:text-black transition-colors hidden">
+                INSTALL APP (iOS)
+            </button>
         </div>
+    </div>
+    
+    <!-- iOS Install Overlay Guide -->
+    <div id="ios-install-guide">
+        <p class="text-[#00ffc8] font-mono text-lg mb-2 font-bold">INSTALL PROTOCOL</p>
+        <p class="text-white font-mono text-sm mb-4 leading-relaxed">
+            1. Tap the <span class="text-blue-400 font-bold text-xl mx-1">⎋</span> Share button below.<br>
+            2. Scroll down and select <span class="text-white font-bold border border-gray-600 px-1 rounded bg-gray-800 text-xs">Add to Home Screen</span>.
+        </p>
+        <button id="close-guide-btn" class="text-pink-500 font-mono text-sm border border-pink-500 px-4 py-1 rounded hover:bg-pink-500 hover:text-white transition-colors">
+            CLOSE
+        </button>
+        <div class="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-[#00ffc8] animate-bounce text-2xl">↓</div>
     </div>
     
     <div id="ui-panel">
@@ -480,7 +516,7 @@
             const app = initializeApp(activeConfig);
             FirebaseState.db = getFirestore(app);
             FirebaseState.auth = getAuth(app);
-            setLogLevel('error');
+            setLogLevel('silent'); // Suppress internal warnings
         } catch (e) {
             console.error("Firebase Init Error:", e);
         }
@@ -518,7 +554,8 @@
     }
 
     function setupLeaderboardListener() {
-        if (!FirebaseState.db) {
+        // Fallback function to use LocalStorage if Firebase fails
+        const useLocal = () => {
             const localScores = JSON.parse(localStorage.getItem('spectre_local_leaderboard') || '[]');
             if (localScores.length === 0) {
                  localScores.push(
@@ -530,6 +567,10 @@
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
             document.getElementById('sys-version').innerText = "SYS.VER.10.0 // LOCAL STORAGE";
+        };
+
+        if (!FirebaseState.db) {
+            useLocal();
             return;
         }
         
@@ -539,7 +580,8 @@
         onSnapshot(scoresQuery, (snapshot) => {
             renderLeaderboard(snapshot.docs.map(doc => doc.data()));
         }, (error) => {
-            console.error("Leaderboard sync error:", error);
+            console.warn("Firebase connection unavailable, falling back to local storage.");
+            useLocal();
         });
     }
 
@@ -925,6 +967,7 @@
         setupPostProcessing(container.clientWidth, container.clientHeight);
         setupMobileControls();
         checkOrientation();
+        setupIOSInstall();
 
         window.addEventListener('resize', onWindowResize);
         
@@ -976,6 +1019,28 @@
         }, 1000);
 
         animate(0);
+    }
+    
+    function setupIOSInstall() {
+        // Detect iOS and NOT standalone
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+        
+        if (isIOS && !isStandalone) {
+            const btn = document.getElementById('ios-install-btn');
+            const guide = document.getElementById('ios-install-guide');
+            const closeBtn = document.getElementById('close-guide-btn');
+            
+            btn.classList.remove('hidden');
+            
+            btn.addEventListener('click', () => {
+                guide.style.display = 'flex';
+            });
+            
+            closeBtn.addEventListener('click', () => {
+                guide.style.display = 'none';
+            });
+        }
     }
     
     function checkOrientation() {
