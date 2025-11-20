@@ -66,6 +66,29 @@
             min-width: 200px;
         }
         
+        #boss-hud {
+            display: none;
+            margin-top: 10px;
+            border-top: 1px solid #ff007f;
+            padding-top: 5px;
+        }
+        
+        #boss-health-bar-container {
+            width: 100%;
+            height: 10px;
+            background: #330011;
+            border: 1px solid #ff007f;
+            margin-top: 5px;
+        }
+        
+        #boss-health-bar {
+            width: 100%;
+            height: 100%;
+            background: #ff007f;
+            box-shadow: 0 0 10px #ff007f;
+            transition: width 0.2s;
+        }
+        
         .breach-warning {
             color: #ff007f;
             font-weight: bold;
@@ -255,6 +278,14 @@
             <div class="mt-2 text-red-400">BREACHES: <span id="missed-display">0</span>/3</div>
             <div id="powerup-display" class="text-sm mt-2 font-bold"></div>
             <div id="wave-display" class="text-xs mt-1 text-pink-500 opacity-80">PHASE: INITIALIZING</div>
+            
+            <!-- Boss HUD -->
+            <div id="boss-hud">
+                <div id="boss-name" class="text-[#ff2a00] font-bold text-sm tracking-widest">WARNING: BOSS DETECTED</div>
+                <div id="boss-health-bar-container">
+                    <div id="boss-health-bar"></div>
+                </div>
+            </div>
         </div>
         
         <div id="overlay-screen">
@@ -299,7 +330,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.5 // RGB SHIELD</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.9.7 // 3D FLIGHT</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-pink-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -414,11 +445,11 @@
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
             
-            document.getElementById('sys-version').innerText = "SYS.VER.9.5 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.9.7 // LOCAL STORAGE";
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.9.5 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.9.7 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -426,7 +457,7 @@
         }, (error) => {
             console.error("Leaderboard sync error:", error);
             // Fallback to local if cloud fails mid-game
-            document.getElementById('sys-version').innerText = "SYS.VER.9.5 // SYNC ERROR";
+            document.getElementById('sys-version').innerText = "SYS.VER.9.7 // SYNC ERROR";
         });
     }
 
@@ -461,7 +492,7 @@
                  resetOverlayToStart();
             }).catch(e => {
                 console.error("Score upload failed", e);
-                // Fallback save to local
+                // Fallback to local
                 saveLocalScore(name, finalScore);
                 resetOverlayToStart();
             });
@@ -724,23 +755,33 @@
         playShieldBreak: function() {
              if (this.isMuted || !this.ctx) return;
              this.playNoise(0.3, 500, this.ctx.currentTime);
+        },
+        playBossSpawn: function() {
+            if (this.isMuted || !this.ctx) return;
+            this.playTone(100, 'sawtooth', 1.5, this.ctx.currentTime, 1.0);
+            this.playTone(80, 'sawtooth', 1.5, this.ctx.currentTime, 1.0);
         }
     };
 
     let scene, camera, renderer, composer, rgbPass;
     let player, shieldMesh, groundMesh1, groundMesh2;
+    let boss = null;
+    let nextBossScoreThreshold = 2000;
+    
     const lasers = [];
     const enemies = [];
     const particles = [];
     const powerUps = [];
     
-    const keys = { left: false, right: false, fire: false };
+    const keys = { left: false, right: false, up: false, down: false, fire: false };
     let isFiring = false;
     let lastFireTime = 0;
     
     let score = 0, missedEnemies = 0, isGameOver = false, isGameRunning = false, gameStartTime = 0;
     let currentPhase = 0; // 0: Init, 1: Normal, 2: Hard, 3: Overdrive
-    let spawnInterval = 2500, lastEnemySpawnTime = 0, lastPowerUpSpawnTime = 0, targetX = 0;
+    let spawnInterval = 2500, lastEnemySpawnTime = 0, lastPowerUpSpawnTime = 0;
+    let targetX = 0;
+    let targetY = -1.0; // Vertical target
     let shakeIntensity = 0;
     
     // Player State
@@ -759,7 +800,8 @@
         neonMagenta: 0xff00ff,
         darkGreen: 0x004411,
         gold: 0xffd700,
-        white: 0xffffff
+        white: 0xffffff,
+        neonYellow: 0xffff00
     };
     const GROUND_SIZE = 200;
     
@@ -767,6 +809,12 @@
         { name: 'STANDARD', color: 0xff007f, speed: 1.0, rot: {x: 0.02, y: 0.02}, score: 100 },
         { name: 'FAST', color: 0x00ffc8, speed: 1.5, rot: {x: 0.0, y: 0.1}, score: 150 },
         { name: 'HEAVY', color: 0xff2a00, speed: 0.7, rot: {x: 0.005, y: 0.005}, score: 200 }
+    ];
+    
+    const BOSS_CONFIGS = [
+        { name: "THE MONOLITH", type: 'CUBE', color: 0xff007f, hp: 30, score: 1000 },
+        { name: "THE PRISM", type: 'TETRA', color: 0x00ffc8, hp: 20, score: 2000 },
+        { name: "THE HIVE", type: 'ICO', color: 0xffd700, hp: 50, score: 3000 }
     ];
     
     const POWERUP_TYPES = [
@@ -807,6 +855,9 @@
         container.addEventListener('mousemove', (e) => {
              const rect = renderer.domElement.getBoundingClientRect();
              targetX = ((e.clientX - rect.left) / rect.width * 2 - 1) * 8;
+             // Map mouse Y to game Y (approx -2 to +3)
+             targetY = -((e.clientY - rect.top) / rect.height * 2 - 1) * 4 + 1;
+             targetY = Math.max(-1.5, Math.min(3.5, targetY));
         });
         container.addEventListener('mousedown', () => { keys.fire = true; });
         container.addEventListener('mouseup', () => { keys.fire = false; });
@@ -814,6 +865,9 @@
              keys.fire = true; 
              const rect = renderer.domElement.getBoundingClientRect();
              targetX = ((e.touches[0].clientX - rect.left) / rect.width * 2 - 1) * 8;
+             targetY = -((e.touches[0].clientY - rect.top) / rect.height * 2 - 1) * 4 + 1;
+             targetY = Math.max(-1.5, Math.min(3.5, targetY));
+             
              // iOS Unlock
              if(AudioSys.ctx && AudioSys.ctx.state === 'suspended') AudioSys.unlock();
         });
@@ -822,6 +876,8 @@
              e.preventDefault(); // Prevent scroll
              const rect = renderer.domElement.getBoundingClientRect();
              targetX = ((e.touches[0].clientX - rect.left) / rect.width * 2 - 1) * 8;
+             targetY = -((e.touches[0].clientY - rect.top) / rect.height * 2 - 1) * 4 + 1;
+             targetY = Math.max(-1.5, Math.min(3.5, targetY));
         });
 
         // Keyboard Input
@@ -829,12 +885,16 @@
             if(!isGameRunning) return;
             if (e.code === 'ArrowLeft' || e.code === 'KeyA') { keys.left = true; }
             if (e.code === 'ArrowRight' || e.code === 'KeyD') { keys.right = true; }
+            if (e.code === 'ArrowUp' || e.code === 'KeyW') { keys.up = true; }
+            if (e.code === 'ArrowDown' || e.code === 'KeyS') { keys.down = true; }
             if (e.code === 'Space') { keys.fire = true; e.preventDefault(); }
         });
         
         window.addEventListener('keyup', (e) => {
             if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
             if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+            if (e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = false;
+            if (e.code === 'ArrowDown' || e.code === 'KeyS') keys.down = false;
             if (e.code === 'Space') keys.fire = false;
         });
 
@@ -963,20 +1023,60 @@
 
     function createPlayerShip() {
         const group = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.2, 3), new THREE.MeshBasicMaterial({color: 0xff007f}));
-        body.rotation.x = Math.PI / 2;
-        body.rotation.z = Math.PI;
+        
+        // 1. Main Fuselage (Sleek Cone)
+        const bodyGeo = new THREE.ConeGeometry(0.45, 1.8, 32);
+        const bodyMat = new THREE.MeshBasicMaterial({ color: 0xff007f }); // Pink main body
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.rotation.x = -Math.PI / 2; // Point forward (Negative Z)
         group.add(body);
 
-        const engineGeo = new THREE.BoxGeometry(0.6, 0.1, 0.1);
-        const engineMat = new THREE.MeshBasicMaterial({ color: 0x00ffc8 });
-        const engine = new THREE.Mesh(engineGeo, engineMat);
-        engine.position.set(0, 0, 0.5);
-        group.add(engine);
+        // 2. Cockpit Detail
+        const cockpitGeo = new THREE.BoxGeometry(0.25, 0.15, 0.5);
+        const cockpitMat = new THREE.MeshBasicMaterial({ color: 0x00ffff }); // Cyan glass
+        const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
+        cockpit.position.set(0, 0.3, 0.2);
+        group.add(cockpit);
+
+        // 3. Green Side Boosters
+        const boosterGeo = new THREE.CylinderGeometry(0.15, 0.2, 1.0, 16);
+        const boosterMat = new THREE.MeshBasicMaterial({ color: 0x333333 }); // Dark grey housing
+
+        // Glow Emitters (Green)
+        const glowGeo = new THREE.CircleGeometry(0.14, 16);
+        const glowMat = new THREE.MeshBasicMaterial({ color: 0x00ff41 }); // Neon Green
+
+        // Left Booster
+        const bL = new THREE.Mesh(boosterGeo, boosterMat);
+        bL.rotation.x = -Math.PI / 2;
+        bL.position.set(-0.6, 0, 0.5);
+        group.add(bL);
+
+        const gL = new THREE.Mesh(glowGeo, glowMat);
+        gL.position.set(0, -0.51, 0); // Bottom of cylinder (which is back after rotation)
+        gL.rotation.x = Math.PI / 2;
+        bL.add(gL);
+
+        // Right Booster
+        const bR = new THREE.Mesh(boosterGeo, boosterMat);
+        bR.rotation.x = -Math.PI / 2;
+        bR.position.set(0.6, 0, 0.5);
+        group.add(bR);
+
+        const gR = new THREE.Mesh(glowGeo, glowMat);
+        gR.position.set(0, -0.51, 0);
+        gR.rotation.x = Math.PI / 2;
+        bR.add(gR);
+
+        // 4. Wings/Struts (Connect boosters to body)
+        const wingGeo = new THREE.BoxGeometry(1.2, 0.05, 0.4);
+        const wingMat = new THREE.MeshBasicMaterial({ color: 0xff007f });
+        const wing = new THREE.Mesh(wingGeo, wingMat);
+        wing.position.set(0, 0, 0.5);
+        group.add(wing);
         
         // Shield Mesh Group (RGB Wireframe)
         const shieldGroup = new THREE.Group();
-        
         const geo = new THREE.IcosahedronGeometry(0.75, 1);
         
         // Red Layer
@@ -1003,6 +1103,101 @@
         player = group;
         player.position.set(0, -1.0, 0);
         scene.add(player);
+    }
+
+    function createBossMesh(config) {
+        const group = new THREE.Group();
+        let mainMesh;
+        
+        if (config.type === 'CUBE') {
+            // The Monolith
+            const geo = new THREE.BoxGeometry(4, 4, 4);
+            const mat = new THREE.MeshBasicMaterial({ color: config.color, wireframe: true });
+            mainMesh = new THREE.Mesh(geo, mat);
+            
+            const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.5, 0), new THREE.MeshBasicMaterial({color: 0xffffff}));
+            group.add(core);
+        } else if (config.type === 'TETRA') {
+            // The Prism
+            const geo = new THREE.TetrahedronGeometry(3.5, 0);
+            const mat = new THREE.MeshBasicMaterial({ color: config.color, wireframe: true });
+            mainMesh = new THREE.Mesh(geo, mat);
+            
+            const rings = new THREE.Mesh(new THREE.TorusGeometry(3, 0.1, 8, 50), new THREE.MeshBasicMaterial({color: 0xffffff}));
+            rings.rotation.x = Math.PI/2;
+            group.add(rings);
+        } else {
+            // The Hive
+            const geo = new THREE.IcosahedronGeometry(3, 1);
+            const mat = new THREE.MeshBasicMaterial({ color: config.color, wireframe: true });
+            mainMesh = new THREE.Mesh(geo, mat);
+            
+            // Spikes
+            for(let i=0; i<6; i++) {
+                const spike = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2, 4), new THREE.MeshBasicMaterial({color: config.color}));
+                spike.position.set((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4);
+                spike.lookAt(0,0,0);
+                group.add(spike);
+            }
+        }
+        
+        group.add(mainMesh);
+        
+        // Add Data Streams
+        const particles = new THREE.Points(
+            new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(100*3).map(() => (Math.random()-0.5)*6), 3)),
+            new THREE.PointsMaterial({color: config.color, size: 0.1})
+        );
+        group.add(particles);
+
+        return group;
+    }
+
+    function spawnBoss() {
+        AudioSys.playBossSpawn();
+        const config = BOSS_CONFIGS[Math.floor(Math.random() * BOSS_CONFIGS.length)];
+        
+        const mesh = createBossMesh(config);
+        mesh.position.set(0, 0, -100); // Start far away
+        
+        mesh.userData = {
+            isBoss: true,
+            hp: config.hp,
+            maxHp: config.hp,
+            score: config.score,
+            name: config.name,
+            movePhase: 0,
+            lastSpawn: 0
+        };
+        
+        boss = mesh;
+        scene.add(boss);
+        
+        // Update HUD
+        document.getElementById('boss-hud').style.display = 'block';
+        document.getElementById('boss-name').innerText = `WARNING: ${config.name} DETECTED`;
+        document.getElementById('boss-health-bar').style.width = '100%';
+        
+        nextBossScoreThreshold += 5000; // Next boss target
+    }
+    
+    function destroyBoss() {
+        AudioSys.playExplosion();
+        AudioSys.playExplosion();
+        
+        // Massive particle explosion
+        for(let i=0; i<5; i++) {
+            spawnParticles(boss.position, boss.children[0].material.color);
+        }
+        
+        shakeIntensity += 2.0;
+        score += boss.userData.score;
+        scene.remove(boss);
+        boss = null;
+        
+        // Hide HUD
+        document.getElementById('boss-hud').style.display = 'none';
+        updateUI();
     }
 
     function createLaser(offsetX = 0, angleZ = 0) {
@@ -1093,14 +1288,28 @@
         }
     }
 
-    function spawnEnemy() {
-        const typeConfig = ENEMY_CONFIGS[Math.floor(Math.random() * ENEMY_CONFIGS.length)];
-        let geometry;
-        if (typeConfig.name === 'STANDARD') geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-        else if (typeConfig.name === 'FAST') geometry = new THREE.OctahedronGeometry(0.6, 0);
-        else geometry = new THREE.IcosahedronGeometry(0.7, 0);
+    function spawnEnemy(startPos = null, isBossMinion = false) {
+        let geometry, mat, speedMult, rotSpeed, scoreVal;
+        
+        if (isBossMinion) {
+            // Boss Bullets: Slow, bright, smaller
+            geometry = new THREE.OctahedronGeometry(0.4, 0);
+            mat = new THREE.MeshBasicMaterial({ color: COLORS.neonYellow });
+            speedMult = 0.09; // Slowed down considerably
+            rotSpeed = {x: 0.1, y: 0.1};
+            scoreVal = 50;
+        } else {
+            const typeConfig = ENEMY_CONFIGS[Math.floor(Math.random() * ENEMY_CONFIGS.length)];
+            if (typeConfig.name === 'STANDARD') geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+            else if (typeConfig.name === 'FAST') geometry = new THREE.OctahedronGeometry(0.6, 0);
+            else geometry = new THREE.IcosahedronGeometry(0.7, 0);
+            
+            mat = new THREE.MeshBasicMaterial({ color: typeConfig.color });
+            speedMult = typeConfig.speed;
+            rotSpeed = typeConfig.rot;
+            scoreVal = typeConfig.score;
+        }
 
-        const mat = new THREE.MeshBasicMaterial({ color: typeConfig.color }); 
         const mesh = new THREE.Mesh(geometry, mat);
         
         const edges = new THREE.LineSegments(
@@ -1110,11 +1319,17 @@
         mesh.add(edges);
 
         mesh.userData = { 
-            speedMult: typeConfig.speed, 
-            rotSpeed: typeConfig.rot,
-            scoreVal: typeConfig.score 
+            speedMult: speedMult, 
+            rotSpeed: rotSpeed,
+            scoreVal: scoreVal 
         };
-        mesh.position.set((Math.random()-0.5)*10, -1.0, -100);
+        
+        if (startPos) {
+            mesh.position.copy(startPos);
+        } else {
+            mesh.position.set((Math.random()-0.5)*10, -1.0, -100);
+        }
+        
         enemies.push(mesh);
         scene.add(mesh);
         lastEnemySpawnTime = performance.now();
@@ -1190,10 +1405,49 @@
                 powerUps.splice(i, 1);
             }
         }
+        
+        // Boss Collision (Player crashes into Boss)
+        if (boss) {
+            if (pBox.intersectsBox(new THREE.Box3().setFromObject(boss))) {
+                AudioSys.playExplosion();
+                gameOver("BOSS COLLISION DETECTED");
+            }
+        }
 
-        // Lasers vs Enemies
+        // Lasers vs Enemies & Boss
         for (let i = lasers.length - 1; i >= 0; i--) {
             const lBox = new THREE.Box3().setFromObject(lasers[i]);
+            let laserHit = false;
+            
+            // Check Boss Hit
+            if (boss && !laserHit) {
+                 if (lBox.intersectsBox(new THREE.Box3().setFromObject(boss))) {
+                     boss.userData.hp--;
+                     AudioSys.playBass(AudioSys.ctx.currentTime, 50, 1.0); // Thud sound
+                     
+                     // Update Health Bar
+                     const pct = (boss.userData.hp / boss.userData.maxHp) * 100;
+                     document.getElementById('boss-health-bar').style.width = pct + '%';
+                     
+                     // Flash Boss
+                     boss.children[0].material.color.setHex(0xffffff);
+                     setTimeout(() => { 
+                         if(boss) boss.children[0].material.color.setHex(COLORS.pink); // Reset color (could use stored original)
+                     }, 50);
+                     
+                     spawnParticles(lasers[i].position, COLORS.white);
+                     
+                     if (boss.userData.hp <= 0) {
+                         destroyBoss();
+                     }
+                     
+                     scene.remove(lasers[i]); lasers.splice(i, 1);
+                     laserHit = true;
+                 }
+            }
+            
+            if (laserHit) continue;
+
             for (let j = enemies.length - 1; j >= 0; j--) {
                 if (lBox.intersectsBox(new THREE.Box3().setFromObject(enemies[j]))) {
                     AudioSys.playExplosion();
@@ -1261,6 +1515,13 @@
         playerState.activePowerUp = 'NONE';
         shieldMesh.visible = false;
         document.getElementById('powerup-display').innerText = "";
+        targetX = 0;
+        targetY = -1.0;
+        
+        // Reset Boss
+        if (boss) { scene.remove(boss); boss = null; }
+        document.getElementById('boss-hud').style.display = 'none';
+        nextBossScoreThreshold = 5000;
         
         if(rgbPass) rgbPass.uniforms['amount'].value = 0.0015;
         setPhase(1); // Reset to green
@@ -1295,10 +1556,41 @@
         if (isGameRunning) {
             if (keys.left) targetX -= 25 * delta;
             if (keys.right) targetX += 25 * delta;
+            if (keys.up) targetY += 25 * delta;
+            if (keys.down) targetY -= 25 * delta;
+            
             targetX = Math.max(-8, Math.min(8, targetX));
+            targetY = Math.max(-1.5, Math.min(3.5, targetY));
 
             const now = performance.now();
             checkPhaseLogic(now);
+            
+            // Boss Logic
+            if (score >= nextBossScoreThreshold && !boss) {
+                spawnBoss();
+            }
+            
+            if (boss) {
+                // Boss Move to Z position
+                if (boss.position.z < -25) {
+                    boss.position.z += 15 * delta;
+                } else {
+                    // Hover Pattern
+                    boss.userData.movePhase += delta;
+                    boss.position.x = Math.sin(boss.userData.movePhase * 0.5) * 4;
+                    boss.position.y = Math.sin(boss.userData.movePhase * 1.2) * 1.0 + 1.0; // Higher up
+                    
+                    // Rotate Boss
+                    boss.rotation.x += delta * 0.2;
+                    boss.rotation.y += delta * 0.3;
+                    
+                    // Spawn Minions (Bullets)
+                    if (now - boss.userData.lastSpawn > 1500) {
+                        spawnEnemy(boss.position, true); // Spawn boss projectile
+                        boss.userData.lastSpawn = now;
+                    }
+                }
+            }
             
             // Power Up Timer
             if (playerState.activePowerUp !== 'NONE' && now > playerState.powerUpEndTime) {
@@ -1322,7 +1614,10 @@
             }
             
             player.position.x += (targetX - player.position.x) * 0.1;
+            player.position.y += (targetY - player.position.y) * 0.1;
+            
             player.rotation.z = (player.position.x - targetX) * 0.1;
+            player.rotation.x = (player.position.y - targetY) * 0.1; // Pitch tilt
             
             // Shield Pulse & Rotation
             if (shieldMesh.visible) {
@@ -1420,7 +1715,10 @@
                 }
             }
 
-            if (now - lastEnemySpawnTime > Math.max(600, 2500 - (now - gameStartTime)/120000*1900)) spawnEnemy();
+            // Spawn Logic
+            if (!boss) {
+                if (now - lastEnemySpawnTime > Math.max(600, 2500 - (now - gameStartTime)/120000*1900)) spawnEnemy();
+            }
             
             // Spawn Powerups (Rare)
             if (now - lastPowerUpSpawnTime > 15000) { // Every 15s check
