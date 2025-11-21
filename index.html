@@ -461,7 +461,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.1 // STEALTH OPS</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.2 // STEALTH OPS</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -568,7 +568,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.0.1 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.0.2 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -576,7 +576,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.0.1 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.0.2 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -1464,27 +1464,28 @@
         let geometry, mat, speedMult, rotSpeed, scoreVal;
         
         if (isBossMinion) {
-            geometry = new THREE.OctahedronGeometry(0.4, 0);
-            mat = new THREE.MeshBasicMaterial({ color: COLORS.neonYellow });
+            geometry = new THREE.OctahedronGeometry(0.45, 0); // Larger
+            mat = new THREE.MeshBasicMaterial({ color: COLORS.neonYellow, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
             speedMult = 0.09; 
             rotSpeed = {x: 0.1, y: 0.1};
             scoreVal = 50;
         } else {
             const typeConfig = ENEMY_CONFIGS[Math.floor(Math.random() * ENEMY_CONFIGS.length)];
-            if (typeConfig.name === 'STANDARD') geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-            else if (typeConfig.name === 'FAST') geometry = new THREE.OctahedronGeometry(0.6, 0);
-            else geometry = new THREE.IcosahedronGeometry(0.7, 0);
-            mat = new THREE.MeshBasicMaterial({ color: typeConfig.color, wireframe: true }); // Wireframe Enemies now
+            if (typeConfig.name === 'STANDARD') geometry = new THREE.BoxGeometry(0.9, 0.9, 0.9); // Larger
+            else if (typeConfig.name === 'FAST') geometry = new THREE.OctahedronGeometry(0.7, 0); // Larger
+            else geometry = new THREE.IcosahedronGeometry(0.8, 0); // Larger
+            mat = new THREE.MeshBasicMaterial({ color: typeConfig.color, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }); // Solid
             speedMult = typeConfig.speed;
             rotSpeed = typeConfig.rot;
             scoreVal = typeConfig.score;
         }
 
         const mesh = new THREE.Mesh(geometry, mat);
-        // Add glowing core
-        const core = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({color: mat.color, transparent: true, opacity: 0.3}));
-        core.scale.setScalar(0.5);
-        mesh.add(core);
+        
+        // Add White Wireframe Overlay instead of inner core
+        const edges = new THREE.EdgesGeometry(geometry);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff }));
+        mesh.add(line);
 
         mesh.userData = { speedMult, rotSpeed, scoreVal };
         
