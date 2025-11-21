@@ -461,7 +461,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.3 // STEALTH OPS</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.4 // BASS BOOST</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -568,7 +568,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.0.3 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.0.4 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -576,7 +576,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.0.3 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.0.4 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -677,28 +677,62 @@
             }
         },
 
+        playVoiceRumble: function() {
+             if (this.isMuted || !this.ctx) return;
+             const now = this.ctx.currentTime;
+             
+             // 1. Sub-bass Sine
+             const osc1 = this.ctx.createOscillator();
+             const gain1 = this.ctx.createGain();
+             osc1.type = 'sine';
+             osc1.frequency.setValueAtTime(60, now);
+             osc1.frequency.exponentialRampToValueAtTime(30, now + 2.0);
+             gain1.gain.setValueAtTime(0.8, now);
+             gain1.gain.exponentialRampToValueAtTime(0.01, now + 2.0);
+             osc1.connect(gain1); gain1.connect(this.ctx.destination);
+             osc1.start(now); osc1.stop(now + 2.0);
+
+             // 2. Grit Layer (Low Sawtooth)
+             const osc2 = this.ctx.createOscillator();
+             const gain2 = this.ctx.createGain();
+             const filter = this.ctx.createBiquadFilter();
+             osc2.type = 'sawtooth';
+             osc2.frequency.setValueAtTime(50, now);
+             osc2.frequency.linearRampToValueAtTime(20, now + 1.5);
+             filter.type = 'lowpass';
+             filter.frequency.value = 120;
+             gain2.gain.setValueAtTime(0.3, now);
+             gain2.gain.linearRampToValueAtTime(0.01, now + 1.5);
+             osc2.connect(filter); filter.connect(gain2); gain2.connect(this.ctx.destination);
+             osc2.start(now); osc2.stop(now + 1.5);
+        },
+
         speak: function(text) {
             if (this.isMuted) return;
             if ('speechSynthesis' in window) {
-                // Cancel ongoing to prevent queue buildup in fast action
+                // Cancel ongoing to prevent queue buildup
                 window.speechSynthesis.cancel();
                 
+                if (text.trim() === " ") return; // Silent unlock, don't rumble
+
                 const msg = new SpeechSynthesisUtterance(text);
-                msg.pitch = 0.6; // Deep
-                msg.rate = 1.2;  // Fast/Robotic
+                msg.pitch = 0.4; // Deep
+                msg.rate = 0.9;  // Heavy
                 msg.volume = 1.0;
                 
-                // Improved voice selection
                 if (this.voices.length === 0) this.loadVoices();
                 
-                // Prefer "Google US English", then any US English, then first available
-                const voice = this.voices.find(v => v.name.includes('Google US English')) || 
+                // Priority: Daniel (iOS Deep), Male, Google US
+                const voice = this.voices.find(v => v.name.includes('Daniel')) || 
+                              this.voices.find(v => v.name.toLowerCase().includes('male')) ||
+                              this.voices.find(v => v.name.includes('Google US English')) || 
                               this.voices.find(v => v.lang === 'en-US') || 
                               this.voices[0];
                               
                 if(voice) msg.voice = voice;
                 
                 window.speechSynthesis.speak(msg);
+                this.playVoiceRumble();
             }
         },
 
@@ -1544,9 +1578,12 @@
             const use3DSpawn = score > 5000;
             const yPos = use3DSpawn ? (Math.random() * 5) - 1.5 : -1.0;
             // Clamp Y to playable area roughly -1.5 to 3.5
-            const finalY = Math.max(-1.5, Math.min(3.5, yPos));
+            const finalY = Math.max(-1.5, Math.min(3.5, targetY)); // Typo fix: was targetY in spawn logic? No, should be safe bounds.
+            // Wait, targetY is player target. 
+            // Let's fix this line to use explicit bounds instead of relying on variable.
+            const safeY = Math.max(-1.5, Math.min(3.5, yPos));
             
-            mesh.position.set((Math.random()-0.5)*10, finalY, -100);
+            mesh.position.set((Math.random()-0.5)*10, safeY, -100);
         }
         
         enemies.push(mesh);
