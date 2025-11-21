@@ -461,7 +461,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.2 // STEALTH OPS</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.3 // STEALTH OPS</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -568,7 +568,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.0.2 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.0.3 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -576,7 +576,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.0.2 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.0.3 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -647,12 +647,22 @@
     const AudioSys = {
         ctx: null, isMuted: false, isPlaying: false,
         nextNoteTime: 0, tempo: 128, lookahead: 25.0, scheduleAheadTime: 0.1, timerID: null, measure: 0, beat: 0,
+        voices: [],
         
         init: function() {
             if (!this.ctx) {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 this.ctx = new AudioContext();
             }
+            // Init voices
+            if ('speechSynthesis' in window) {
+                this.loadVoices();
+                window.speechSynthesis.onvoiceschanged = () => this.loadVoices();
+            }
+        },
+        
+        loadVoices: function() {
+            this.voices = window.speechSynthesis.getVoices();
         },
         
         unlock: function() {
@@ -669,17 +679,23 @@
 
         speak: function(text) {
             if (this.isMuted) return;
-            // Simple Text-to-Speech integration
             if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel(); // Cancel previous
+                // Cancel ongoing to prevent queue buildup in fast action
+                window.speechSynthesis.cancel();
+                
                 const msg = new SpeechSynthesisUtterance(text);
                 msg.pitch = 0.6; // Deep
                 msg.rate = 1.2;  // Fast/Robotic
-                msg.volume = 0.8;
+                msg.volume = 1.0;
                 
-                // Try to find a standard English voice
-                const voices = window.speechSynthesis.getVoices();
-                const voice = voices.find(v => v.lang === 'en-US' && !v.name.includes('Google')) || voices[0];
+                // Improved voice selection
+                if (this.voices.length === 0) this.loadVoices();
+                
+                // Prefer "Google US English", then any US English, then first available
+                const voice = this.voices.find(v => v.name.includes('Google US English')) || 
+                              this.voices.find(v => v.lang === 'en-US') || 
+                              this.voices[0];
+                              
                 if(voice) msg.voice = voice;
                 
                 window.speechSynthesis.speak(msg);
@@ -1698,10 +1714,14 @@
     }
 
     function startGame() {
+        // Trigger silent speech to unlock iOS Speech Synthesis for later events
+        AudioSys.speak(" ");
         AudioSys.unlock(); 
         AudioSys.init(); 
         AudioSys.start();
-        AudioSys.speak("Protocol Initiated.");
+        
+        setTimeout(() => { AudioSys.speak("Protocol Initiated."); }, 100);
+
         isGameOver = false; isGameRunning = true; isDying = false;
         score = 0; missedEnemies = 0; gameStartTime = performance.now();
         currentPhase = 0;
