@@ -461,7 +461,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.4 // BASS BOOST</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.5 // OPTIMIZED</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -484,6 +484,64 @@
     import { initializeApp } from 'firebase/app';
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
     import { getFirestore, collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp, setLogLevel } from 'firebase/firestore';
+
+    // --- SHARED ASSETS CACHE (OPTIMIZATION) ---
+    // Shared Geometries to prevent creating new ones every frame
+    let SharedGeos = {
+        initialized: false,
+        laser: null,
+        particle: null,
+        hullDebris: null,
+        enemyBox: null,
+        enemyOcta: null,
+        enemyIco: null,
+        bossMinion: null,
+        // Edges (Heavy calc)
+        enemyBoxEdges: null,
+        enemyOctaEdges: null,
+        enemyIcoEdges: null,
+        bossMinionEdges: null
+    };
+
+    // Shared Materials Map (Key: ColorHex-WireframeBool-TransparentBool)
+    const SharedMats = new Map();
+
+    function initSharedAssets() {
+        if(SharedGeos.initialized) return;
+        SharedGeos.laser = new THREE.BoxGeometry(0.1, 0.1, 1.5);
+        SharedGeos.particle = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+        SharedGeos.hullDebris = new THREE.CircleGeometry(0.3, 3);
+        
+        SharedGeos.enemyBox = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+        SharedGeos.enemyOcta = new THREE.OctahedronGeometry(0.7, 0);
+        SharedGeos.enemyIco = new THREE.IcosahedronGeometry(0.8, 0);
+        SharedGeos.bossMinion = new THREE.OctahedronGeometry(0.45, 0);
+        
+        // Pre-calculate edges
+        SharedGeos.enemyBoxEdges = new THREE.EdgesGeometry(SharedGeos.enemyBox);
+        SharedGeos.enemyOctaEdges = new THREE.EdgesGeometry(SharedGeos.enemyOcta);
+        SharedGeos.enemyIcoEdges = new THREE.EdgesGeometry(SharedGeos.enemyIco);
+        SharedGeos.bossMinionEdges = new THREE.EdgesGeometry(SharedGeos.bossMinion);
+        
+        SharedGeos.initialized = true;
+    }
+
+    function getSharedMaterial(color, wireframe = false, transparent = false, polygonOffset = false) {
+        const key = `${color}-${wireframe}-${transparent}-${polygonOffset}`;
+        if (!SharedMats.has(key)) {
+            const mat = new THREE.MeshBasicMaterial({ 
+                color: color, 
+                wireframe: wireframe, 
+                transparent: transparent,
+                side: THREE.DoubleSide,
+                polygonOffset: polygonOffset,
+                polygonOffsetFactor: polygonOffset ? 1 : 0,
+                polygonOffsetUnits: polygonOffset ? 1 : 0
+            });
+            SharedMats.set(key, mat);
+        }
+        return SharedMats.get(key);
+    }
 
     // --- CONFIGURATION ---
     const FIREBASE_CONFIG = {
@@ -568,7 +626,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.0.4 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.0.5 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -576,7 +634,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.0.4 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.0.5 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -648,6 +706,7 @@
         ctx: null, isMuted: false, isPlaying: false,
         nextNoteTime: 0, tempo: 128, lookahead: 25.0, scheduleAheadTime: 0.1, timerID: null, measure: 0, beat: 0,
         voices: [],
+        activeUtterance: null, // Hold reference to prevent GC
         
         init: function() {
             if (!this.ctx) {
@@ -719,6 +778,11 @@
                 msg.pitch = 0.4; // Deep
                 msg.rate = 0.9;  // Heavy
                 msg.volume = 1.0;
+                
+                // Prevent GC prematurely (Optimize framerate)
+                this.activeUtterance = msg;
+                msg.onend = () => { this.activeUtterance = null; };
+                msg.onerror = () => { this.activeUtterance = null; };
                 
                 if (this.voices.length === 0) this.loadVoices();
                 
@@ -1022,6 +1086,9 @@
         scene = new THREE.Scene();
         scene.background = new THREE.Color(COLORS.dark);
         scene.fog = new THREE.FogExp2(COLORS.dark, 0.02); 
+        
+        // Init Shared Assets
+        initSharedAssets();
 
         camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
         camera.position.set(0, 1.0, 6); 
@@ -1326,13 +1393,6 @@
         const shapeGeo = new THREE.BufferGeometry();
         
         // Vertices (X, Y, Z)
-        // 0: Nose Tip (0, 0, -1.5)
-        // 1: Cockpit Top (0, 0.5, 0.5)
-        // 2: Wing Left Tip (-1.8, -0.2, 1.2)
-        // 3: Wing Right Tip (1.8, -0.2, 1.2)
-        // 4: Rear Center (0, 0, 1.5)
-        // 5: Bottom Center (0, -0.3, 0.5)
-        
         const vertices = new Float32Array([
              // Top Left Face
              0, 0, -1.5, -1.8, -0.2, 1.2, 0, 0.5, 0.5,
@@ -1356,7 +1416,6 @@
         shapeGeo.computeVertexNormals();
         
         // 1. Wireframe Mesh (Always Visible)
-        // CHANGED: Color set to Pink as requested
         const frameMat = new THREE.MeshBasicMaterial({ color: COLORS.pink, wireframe: true });
         frameMesh = new THREE.Mesh(shapeGeo, frameMat);
         group.add(frameMesh);
@@ -1478,7 +1537,8 @@
 
     function createLaser(offsetX = 0, angleZ = 0) {
         AudioSys.playLaser();
-        const l = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1.5), new THREE.MeshBasicMaterial({color: 0xccffff})); 
+        // Use Shared Assets
+        const l = new THREE.Mesh(SharedGeos.laser, getSharedMaterial(0xccffff));
         l.position.copy(player.position);
         l.position.x += offsetX;
         l.position.z -= 1;
@@ -1542,20 +1602,28 @@
     }
 
     function spawnEnemy(startPos = null, isBossMinion = false) {
-        let geometry, mat, speedMult, rotSpeed, scoreVal;
+        let geometry, edgesGeometry, mat, speedMult, rotSpeed, scoreVal;
         
         if (isBossMinion) {
-            geometry = new THREE.OctahedronGeometry(0.45, 0); // Larger
-            mat = new THREE.MeshBasicMaterial({ color: COLORS.neonYellow, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+            geometry = SharedGeos.bossMinion;
+            edgesGeometry = SharedGeos.bossMinionEdges;
+            mat = getSharedMaterial(COLORS.neonYellow, false, false, true);
             speedMult = 0.09; 
             rotSpeed = {x: 0.1, y: 0.1};
             scoreVal = 50;
         } else {
             const typeConfig = ENEMY_CONFIGS[Math.floor(Math.random() * ENEMY_CONFIGS.length)];
-            if (typeConfig.name === 'STANDARD') geometry = new THREE.BoxGeometry(0.9, 0.9, 0.9); // Larger
-            else if (typeConfig.name === 'FAST') geometry = new THREE.OctahedronGeometry(0.7, 0); // Larger
-            else geometry = new THREE.IcosahedronGeometry(0.8, 0); // Larger
-            mat = new THREE.MeshBasicMaterial({ color: typeConfig.color, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }); // Solid
+            if (typeConfig.name === 'STANDARD') {
+                geometry = SharedGeos.enemyBox;
+                edgesGeometry = SharedGeos.enemyBoxEdges;
+            } else if (typeConfig.name === 'FAST') {
+                geometry = SharedGeos.enemyOcta;
+                edgesGeometry = SharedGeos.enemyOctaEdges;
+            } else {
+                geometry = SharedGeos.enemyIco;
+                edgesGeometry = SharedGeos.enemyIcoEdges;
+            }
+            mat = getSharedMaterial(typeConfig.color, false, false, true);
             speedMult = typeConfig.speed;
             rotSpeed = typeConfig.rot;
             scoreVal = typeConfig.score;
@@ -1563,26 +1631,17 @@
 
         const mesh = new THREE.Mesh(geometry, mat);
         
-        // Add White Wireframe Overlay instead of inner core
-        const edges = new THREE.EdgesGeometry(geometry);
-        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff }));
+        // Use Shared Edges
+        const line = new THREE.LineSegments(edgesGeometry, getSharedMaterial(0xffffff));
         mesh.add(line);
 
         mesh.userData = { speedMult, rotSpeed, scoreVal };
         
         if (startPos) mesh.position.copy(startPos);
         else {
-            // Random spawn logic
-            // If score > 5000 (after first boss), enemies can fly at different heights
-            // otherwise, ground only.
             const use3DSpawn = score > 5000;
             const yPos = use3DSpawn ? (Math.random() * 5) - 1.5 : -1.0;
-            // Clamp Y to playable area roughly -1.5 to 3.5
-            const finalY = Math.max(-1.5, Math.min(3.5, targetY)); // Typo fix: was targetY in spawn logic? No, should be safe bounds.
-            // Wait, targetY is player target. 
-            // Let's fix this line to use explicit bounds instead of relying on variable.
             const safeY = Math.max(-1.5, Math.min(3.5, yPos));
-            
             mesh.position.set((Math.random()-0.5)*10, safeY, -100);
         }
         
@@ -1594,10 +1653,10 @@
     
     function spawnParticles(pos, color) {
         const count = 12;
-        const geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-        const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true });
+        // Use Shared Assets
+        const mat = getSharedMaterial(color, false, true); // Transparent
         for(let i=0; i<count; i++) {
-            const mesh = new THREE.Mesh(geo, mat);
+            const mesh = new THREE.Mesh(SharedGeos.particle, mat);
             mesh.position.copy(pos);
             mesh.userData.velocity = new THREE.Vector3((Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5);
             mesh.userData.rotSpeed = new THREE.Vector3((Math.random()-0.5)*0.2, (Math.random()-0.5)*0.2, (Math.random()-0.5)*0.2);
@@ -1609,13 +1668,13 @@
     
     function spawnHullDebris(pos) {
         const count = 8;
-        // Flat triangles resembling panels
-        const geo = new THREE.CircleGeometry(0.3, 3); 
-        const mat = new THREE.MeshBasicMaterial({ color: COLORS.hullGrey, side: THREE.DoubleSide });
+        // Use Shared Assets
+        const mat = getSharedMaterial(COLORS.hullGrey, false, false);
+        mat.side = THREE.DoubleSide;
+        
         for(let i=0; i<count; i++) {
-            const mesh = new THREE.Mesh(geo, mat);
+            const mesh = new THREE.Mesh(SharedGeos.hullDebris, mat);
             mesh.position.copy(pos);
-            // Explode upwards and out
             mesh.userData.velocity = new THREE.Vector3(
                 (Math.random() - 0.5) * 0.8,
                 Math.random() * 0.8,
@@ -1629,7 +1688,7 @@
     }
 
     function checkCollisions() {
-        if(isDying) return; // No collisions during death sequence
+        if(isDying) return; 
         
         const pBox = new THREE.Box3().setFromObject(player);
         
