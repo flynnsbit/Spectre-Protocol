@@ -667,10 +667,34 @@
             }
         },
 
+        speak: function(text) {
+            if (this.isMuted) return;
+            // Simple Text-to-Speech integration
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); // Cancel previous
+                const msg = new SpeechSynthesisUtterance(text);
+                msg.pitch = 0.6; // Deep
+                msg.rate = 1.2;  // Fast/Robotic
+                msg.volume = 0.8;
+                
+                // Try to find a standard English voice
+                const voices = window.speechSynthesis.getVoices();
+                const voice = voices.find(v => v.lang === 'en-US' && !v.name.includes('Google')) || voices[0];
+                if(voice) msg.voice = voice;
+                
+                window.speechSynthesis.speak(msg);
+            }
+        },
+
         toggleMute: function() {
             this.isMuted = !this.isMuted;
-            if (this.isMuted) { if(this.ctx) this.ctx.suspend(); } 
-            else { if(this.ctx) this.ctx.resume(); }
+            if (this.isMuted) { 
+                if(this.ctx) this.ctx.suspend(); 
+                if('speechSynthesis' in window) window.speechSynthesis.cancel();
+            } 
+            else { 
+                if(this.ctx) this.ctx.resume(); 
+            }
             return this.isMuted;
         },
         
@@ -1209,6 +1233,7 @@
             hud.className = "text-xs mt-1 text-[#00ff41] opacity-80";
             groundMesh1.material.color.setHex(COLORS.neonGreen);
             AudioSys.tempo = 128;
+            AudioSys.speak("Protocol Start.");
         } else if (p === 2) {
             hud.innerText = "PHASE: HARDLINE";
             hud.className = "text-xs mt-1 text-[#00ffff] opacity-100 font-bold";
@@ -1216,6 +1241,7 @@
             AudioSys.tempo = 138;
             composer.passes[1].strength = 3.0; 
             setTimeout(() => { composer.passes[1].strength = 0.75; }, 500);
+            AudioSys.speak("Phase 2. Hardline.");
         } else if (p === 3) {
             hud.innerText = "PHASE: SYSTEM OVERDRIVE";
             hud.className = "text-xs mt-1 text-[#ff00ff] opacity-100 font-bold animate-pulse";
@@ -1223,6 +1249,7 @@
             AudioSys.tempo = 150;
             composer.passes[1].strength = 4.0;
             setTimeout(() => { composer.passes[1].strength = 0.75; }, 500);
+            AudioSys.speak("Phase 3. System Overdrive.");
         }
     }
     
@@ -1363,6 +1390,7 @@
 
     function spawnBoss() {
         AudioSys.playBossSpawn();
+        AudioSys.speak("Warning. Boss Detected.");
         const config = BOSS_CONFIGS[Math.floor(Math.random() * BOSS_CONFIGS.length)];
         
         const mesh = createBossMesh(config);
@@ -1449,6 +1477,9 @@
         hud.style.color = '#' + powerUpData.color.toString(16);
         hud.className = "text-sm mt-2 font-bold powerup-active";
         spawnParticles(player.position, powerUpData.color);
+        
+        // Voice Announcement
+        if (powerUpData.label) AudioSys.speak(powerUpData.label);
         
         if (powerUpData.type === 'SHIELD') {
             playerState.shield = true;
@@ -1657,6 +1688,7 @@
     function gameOver(reason) {
         isGameOver = true; isGameRunning = false; isDying = false;
         AudioSys.stop();
+        AudioSys.speak("System Failure.");
         document.getElementById('overlay-title').innerText = `${reason}\nSCORE: ${score}`;
         document.getElementById('start-btn').style.display = 'none';
         document.getElementById('form-container').classList.remove('hidden');
@@ -1669,6 +1701,7 @@
         AudioSys.unlock(); 
         AudioSys.init(); 
         AudioSys.start();
+        AudioSys.speak("Protocol Initiated.");
         isGameOver = false; isGameRunning = true; isDying = false;
         score = 0; missedEnemies = 0; gameStartTime = performance.now();
         currentPhase = 0;
