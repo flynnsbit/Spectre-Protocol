@@ -1347,15 +1347,15 @@
             hud.className = "text-xs mt-1 text-[#00ff41] opacity-80";
             groundMesh1.material.color.setHex(COLORS.neonGreen);
             AudioSys.tempo = 128;
-            AudioSys.speak("Protocol Start.");
+            // AudioSys.speak("Protocol Start.");
         } else if (p === 2) {
             hud.innerText = "PHASE: HARDLINE";
             hud.className = "text-xs mt-1 text-[#00ffff] opacity-100 font-bold";
             groundMesh1.material.color.setHex(COLORS.cyan);
             AudioSys.tempo = 138;
-            composer.passes[1].strength = 3.0; 
+            composer.passes[1].strength = 3.0;
             setTimeout(() => { composer.passes[1].strength = 0.75; }, 500);
-            AudioSys.speak("Phase 2. Hardline.");
+            // AudioSys.speak("Phase 2. Hardline.");
         } else if (p === 3) {
             hud.innerText = "PHASE: SYSTEM OVERDRIVE";
             hud.className = "text-xs mt-1 text-[#ff00ff] opacity-100 font-bold animate-pulse";
@@ -1363,7 +1363,7 @@
             AudioSys.tempo = 150;
             composer.passes[1].strength = 4.0;
             setTimeout(() => { composer.passes[1].strength = 0.75; }, 500);
-            AudioSys.speak("Phase 3. System Overdrive.");
+            // AudioSys.speak("Phase 3. System Overdrive.");
         }
     }
     
@@ -1496,7 +1496,7 @@
 
     function spawnBoss() {
         AudioSys.playBossSpawn();
-        AudioSys.speak("Warning. Boss Detected.");
+        // AudioSys.speak("Warning. Boss Detected.");
         const config = BOSS_CONFIGS[Math.floor(Math.random() * BOSS_CONFIGS.length)];
         
         const mesh = createBossMesh(config);
@@ -1586,7 +1586,7 @@
         spawnParticles(player.position, powerUpData.color);
         
         // Voice Announcement
-        if (powerUpData.label) AudioSys.speak(powerUpData.label);
+        // if (powerUpData.label) AudioSys.speak(powerUpData.label);
         
         if (powerUpData.type === 'SHIELD') {
             playerState.shield = true;
@@ -1797,7 +1797,7 @@
     function gameOver(reason) {
         isGameOver = true; isGameRunning = false; isDying = false;
         AudioSys.stop();
-        AudioSys.speak("System Failure.");
+        // AudioSys.speak("System Failure.");
         document.getElementById('overlay-title').innerText = `${reason}\nSCORE: ${score}`;
         document.getElementById('start-btn').style.display = 'none';
         document.getElementById('form-container').classList.remove('hidden');
@@ -1813,7 +1813,7 @@
         AudioSys.init(); 
         AudioSys.start();
         
-        setTimeout(() => { AudioSys.speak("Protocol Initiated."); }, 100);
+        setTimeout(() => { /* AudioSys.speak("Protocol Initiated."); */ }, 100);
 
         isGameOver = false; isGameRunning = true; isDying = false;
         score = 0; missedEnemies = 0; gameStartTime = performance.now();
