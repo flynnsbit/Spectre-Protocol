@@ -722,6 +722,12 @@
         
         loadVoices: function() {
             this.voices = window.speechSynthesis.getVoices();
+            // Select preferred voice once
+            this.selectedVoice = this.voices.find(v => v.name.includes('Daniel')) ||
+                                 this.voices.find(v => v.name.toLowerCase().includes('male')) ||
+                                 this.voices.find(v => v.name.includes('Google US English')) ||
+                                 this.voices.find(v => v.lang === 'en-US') ||
+                                 this.voices[0];
         },
         
         unlock: function() {
@@ -771,32 +777,23 @@
             if ('speechSynthesis' in window) {
                 // Cancel ongoing to prevent queue buildup
                 window.speechSynthesis.cancel();
-                
+
                 if (text.trim() === " ") return; // Silent unlock, don't rumble
 
                 const msg = new SpeechSynthesisUtterance(text);
                 msg.pitch = 0.4; // Deep
                 msg.rate = 0.9;  // Heavy
                 msg.volume = 1.0;
-                
+
                 // Prevent GC prematurely (Optimize framerate)
                 this.activeUtterance = msg;
                 msg.onend = () => { this.activeUtterance = null; };
                 msg.onerror = () => { this.activeUtterance = null; };
-                
-                if (this.voices.length === 0) this.loadVoices();
-                
-                // Priority: Daniel (iOS Deep), Male, Google US
-                const voice = this.voices.find(v => v.name.includes('Daniel')) || 
-                              this.voices.find(v => v.name.toLowerCase().includes('male')) ||
-                              this.voices.find(v => v.name.includes('Google US English')) || 
-                              this.voices.find(v => v.lang === 'en-US') || 
-                              this.voices[0];
-                              
-                if(voice) msg.voice = voice;
-                
+
+                if (this.selectedVoice) msg.voice = this.selectedVoice;
+
                 window.speechSynthesis.speak(msg);
-                this.playVoiceRumble();
+                // this.playVoiceRumble(); // Disabled to prevent FPS hitch
             }
         },
 
