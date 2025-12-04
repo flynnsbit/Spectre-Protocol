@@ -327,6 +327,14 @@
             color: #fff;
             box-shadow: 0 0 30px #00ffc8;
         }
+
+        /* Landscape mode on phones - move controls inward from screen edges */
+        @media (orientation: landscape) and (max-height: 500px) {
+            #mobile-controls {
+                padding-left: 60px;
+                padding-right: 60px;
+            }
+        }
         
         /* iOS Install Guide */
         #ios-install-guide {
