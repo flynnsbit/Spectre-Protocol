@@ -458,15 +458,14 @@
         <div class="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-[#00ffc8] animate-bounce text-2xl">↓</div>
     </div>
     
-    <!-- Debug FPS/Timer Display -->
-    <div id="debug-stats" style="position: fixed; top: 80px; right: 10px; z-index: 9999; background: rgba(0,0,0,0.85); padding: 8px 12px; border: 1px solid #00ffc8; border-radius: 4px; font-family: monospace; font-size: 12px; color: #00ffc8;">
-        <span id="fps-counter">FPS: --</span> | <span id="game-timer">TIME: 0.0s</span> | <span id="frame-warn"></span>
+    <div id="debug-stats" style="position: fixed; top: env(safe-area-inset-top, 0); right: env(safe-area-inset-right, 0); z-index: 9999; background: rgba(0,0,0,0.85); padding: 4px 8px; font-family: monospace; font-size: 11px; color: #00ffc8;">
+        <span id="fps-counter">FPS: --</span> | <span id="game-timer">TIME: 0.0s</span>
     </div>
     
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.1.6 // DEBUG</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.1.7 // DEBUG</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -698,7 +697,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.1.6 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.1.7 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -706,7 +705,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.1.6 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.1.7 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -1981,7 +1980,6 @@
         checkOrientation();
     }
 
-    // --- DEBUG: FPS Counter & Game Timer ---
     let lastTime = 0;
     let fpsFrameCount = 0;
     let fpsLastUpdate = 0;
@@ -1989,22 +1987,12 @@
     let gameElapsedTime = 0;
     const fpsCounterEl = document.getElementById('fps-counter');
     const gameTimerEl = document.getElementById('game-timer');
-    const frameWarnEl = document.getElementById('frame-warn');
-    let lastHitchTime = 0;
-    let lastHitchDuration = 0;
 
     function animate(time) {
         requestAnimationFrame(animate);
         if(!lastTime) { lastTime = time; fpsLastUpdate = time; return; }
         const delta = (time - lastTime) / 1000;
-        const frameMs = time - lastTime;
         lastTime = time;
-
-        if (frameMs > 25 && isGameRunning && gameStartTime > 0) {
-            lastHitchTime = (performance.now() - gameStartTime) / 1000;
-            lastHitchDuration = frameMs;
-            if (frameWarnEl) frameWarnEl.textContent = 'HITCH: ' + frameMs.toFixed(0) + 'ms @ ' + lastHitchTime.toFixed(1) + 's';
-        }
 
         // FPS calculation (update every 500ms for stability)
         fpsFrameCount++;
