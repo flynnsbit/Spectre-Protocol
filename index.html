@@ -466,7 +466,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.1.0 // DEBUG</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.1.1 // DEBUG</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -698,7 +698,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.1.0 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.1.1 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -706,7 +706,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.1.0 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.1.1 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -848,31 +848,29 @@
         speak: function(text) {
             if (this.isMuted) return;
             if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
-
                 if (text.trim() === " ") return;
 
-                const speakNow = () => {
-                    const msg = new SpeechSynthesisUtterance(text);
-                    msg.pitch = 0.4;
-                    msg.rate = 0.9;
-                    msg.volume = 1.0;
+                const msg = new SpeechSynthesisUtterance(text);
+                msg.pitch = 0.4;
+                msg.rate = 0.9;
+                msg.volume = 1.0;
 
-                    this.utterancePool.push(msg);
-                    if (this.utterancePool.length > 20) {
-                        this.utterancePool.shift();
-                    }
-
-                    if (this.selectedVoice) msg.voice = this.selectedVoice;
-
-                    window.speechSynthesis.speak(msg);
-                };
-                
-                if ('requestIdleCallback' in window) {
-                    requestIdleCallback(speakNow, { timeout: 100 });
-                } else {
-                    setTimeout(speakNow, 0);
+                this.utterancePool.push(msg);
+                if (this.utterancePool.length > 50) {
+                    this.utterancePool.shift();
                 }
+
+                if (this.selectedVoice) msg.voice = this.selectedVoice;
+
+                msg.onend = () => {
+                    const buffer = new SpeechSynthesisUtterance("");
+                    buffer.volume = 0;
+                    buffer.rate = 10;
+                    this.utterancePool.push(buffer);
+                    window.speechSynthesis.speak(buffer);
+                };
+
+                window.speechSynthesis.speak(msg);
             }
         },
 
