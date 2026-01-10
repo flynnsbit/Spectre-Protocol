@@ -461,10 +461,13 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.5 // OPTIMIZED</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.6 // DEBUG</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
+        </div>
+        <div id="debug-stats" class="text-xs text-cyan-400 font-mono" style="position: fixed; top: 50px; left: 10px; z-index: 1000; background: rgba(0,0,0,0.7); padding: 4px 8px; border: 1px solid #00ffc8; border-radius: 4px;">
+            <span id="fps-counter">FPS: --</span> | <span id="game-timer">TIME: 0.0s</span>
         </div>
         <div class="control-group flex items-center">
             <button id="mute-btn" class="control-btn">MUTE AUDIO</button>
@@ -693,7 +696,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.0.5 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.0.6 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -701,7 +704,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.0.5 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.0.6 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -1911,7 +1914,7 @@
         setTimeout(() => { AudioSys.speak("Protocol Initiated."); }, 100);
 
         isGameOver = false; isGameRunning = true; isDying = false;
-        score = 0; missedEnemies = 0; gameStartTime = performance.now();
+        score = 0; missedEnemies = 0; gameStartTime = 0; // Reset for FPS timer
         currentPhase = 0;
         shakeIntensity = 0;
         playerState.shield = false;
@@ -1956,12 +1959,37 @@
         checkOrientation();
     }
 
+    // --- DEBUG: FPS Counter & Game Timer ---
     let lastTime = 0;
+    let fpsFrameCount = 0;
+    let fpsLastUpdate = 0;
+    let currentFps = 0;
+    let gameStartTime = 0;
+    let gameElapsedTime = 0;
+    const fpsCounterEl = document.getElementById('fps-counter');
+    const gameTimerEl = document.getElementById('game-timer');
+
     function animate(time) {
         requestAnimationFrame(animate);
-        if(!lastTime) { lastTime = time; return; }
+        if(!lastTime) { lastTime = time; fpsLastUpdate = time; return; }
         const delta = (time - lastTime) / 1000;
         lastTime = time;
+
+        // FPS calculation (update every 500ms for stability)
+        fpsFrameCount++;
+        if (time - fpsLastUpdate >= 500) {
+            currentFps = Math.round(fpsFrameCount / ((time - fpsLastUpdate) / 1000));
+            fpsFrameCount = 0;
+            fpsLastUpdate = time;
+            if (fpsCounterEl) fpsCounterEl.textContent = 'FPS: ' + currentFps;
+        }
+
+        // Game timer (only when game is running)
+        if (isGameRunning && !isDying) {
+            if (gameStartTime === 0) gameStartTime = time;
+            gameElapsedTime = (time - gameStartTime) / 1000;
+            if (gameTimerEl) gameTimerEl.textContent = 'TIME: ' + gameElapsedTime.toFixed(1) + 's';
+        }
 
         updateGround(delta);
 
