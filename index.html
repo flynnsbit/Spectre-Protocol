@@ -855,10 +855,19 @@
                     msg.rate = 0.9;  // Heavy
                     msg.volume = 1.0;
 
-                    // Prevent GC prematurely (Optimize framerate)
+                    // Keep reference to prevent GC during speech
                     this.activeUtterance = msg;
-                    msg.onend = () => { this.activeUtterance = null; };
-                    msg.onerror = () => { this.activeUtterance = null; };
+
+                    // Defer cleanup to idle time to prevent GC-induced frame hitch on iOS
+                    const deferCleanup = () => {
+                        if ('requestIdleCallback' in window) {
+                            requestIdleCallback(() => { this.activeUtterance = null; }, { timeout: 500 });
+                        } else {
+                            setTimeout(() => { this.activeUtterance = null; }, 100);
+                        }
+                    };
+                    msg.onend = deferCleanup;
+                    msg.onerror = deferCleanup;
 
                     if (this.selectedVoice) msg.voice = this.selectedVoice;
 
