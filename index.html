@@ -485,6 +485,73 @@
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
     import { getFirestore, collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp, setLogLevel } from 'firebase/firestore';
 
+    // --- DEVICE DETECTION & ADAPTIVE QUALITY (iPhone Optimization) ---
+    const DeviceConfig = {
+        isMobile: /iPhone|iPad|iPod|Android/i.test(navigator.userAgent),
+        isIOS: /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream,
+        isLowPower: false, // Will be set based on performance detection
+        
+        // Quality settings (adjusted per device)
+        pixelRatio: 1,
+        bloomStrength: 0.75,
+        bloomRadius: 0.5,
+        bloomResolutionScale: 1.0,
+        starfieldCount: 2000,
+        particleCount: 12,
+        groundSegments: 50,
+        enableRGBShift: true,
+        
+        init: function() {
+            if (this.isMobile) {
+                // Cap pixel ratio at 2x on mobile (huge performance win)
+                this.pixelRatio = Math.min(window.devicePixelRatio, 2);
+                
+                // Reduce bloom resolution on mobile (same visual, less GPU)
+                this.bloomResolutionScale = 0.5;
+                
+                // Slightly reduce particle density (still looks great)
+                this.starfieldCount = 1000;
+                this.particleCount = 8;
+                
+                // Reduce ground complexity (not visible at game speed)
+                this.groundSegments = 30;
+                
+                // RGB Shift still enabled (it's cheap)
+                this.enableRGBShift = true;
+                
+                console.log('[Spectre] Mobile mode: Optimized settings applied');
+            } else {
+                this.pixelRatio = window.devicePixelRatio;
+                console.log('[Spectre] Desktop mode: Full quality');
+            }
+        }
+    };
+    
+    // Initialize device config immediately
+    DeviceConfig.init();
+
+    // --- COLLISION BOX CACHE (Eliminates per-frame object creation) ---
+    const CollisionCache = {
+        playerBox: new THREE.Box3(),
+        tempBox: new THREE.Box3(),
+        tempBox2: new THREE.Box3(),
+        
+        updatePlayerBox: function(player) {
+            this.playerBox.setFromObject(player);
+        },
+        
+        checkIntersection: function(object) {
+            this.tempBox.setFromObject(object);
+            return this.playerBox.intersectsBox(this.tempBox);
+        },
+        
+        checkBoxIntersection: function(obj1, obj2) {
+            this.tempBox.setFromObject(obj1);
+            this.tempBox2.setFromObject(obj2);
+            return this.tempBox.intersectsBox(this.tempBox2);
+        }
+    };
+
     // --- SHARED ASSETS CACHE (OPTIMIZATION) ---
     // Shared Geometries to prevent creating new ones every frame
     let SharedGeos = {
@@ -780,20 +847,30 @@
 
                 if (text.trim() === " ") return; // Silent unlock, don't rumble
 
-                const msg = new SpeechSynthesisUtterance(text);
-                msg.pitch = 0.4; // Deep
-                msg.rate = 0.9;  // Heavy
-                msg.volume = 1.0;
+                // Defer speech to next idle frame to prevent FPS hitch on iPhone
+                // Uses requestIdleCallback if available, falls back to setTimeout
+                const speakNow = () => {
+                    const msg = new SpeechSynthesisUtterance(text);
+                    msg.pitch = 0.4; // Deep
+                    msg.rate = 0.9;  // Heavy
+                    msg.volume = 1.0;
 
-                // Prevent GC prematurely (Optimize framerate)
-                this.activeUtterance = msg;
-                msg.onend = () => { this.activeUtterance = null; };
-                msg.onerror = () => { this.activeUtterance = null; };
+                    // Prevent GC prematurely (Optimize framerate)
+                    this.activeUtterance = msg;
+                    msg.onend = () => { this.activeUtterance = null; };
+                    msg.onerror = () => { this.activeUtterance = null; };
 
-                if (this.selectedVoice) msg.voice = this.selectedVoice;
+                    if (this.selectedVoice) msg.voice = this.selectedVoice;
 
-                window.speechSynthesis.speak(msg);
-                // this.playVoiceRumble(); // Disabled to prevent FPS hitch
+                    window.speechSynthesis.speak(msg);
+                };
+                
+                // Schedule speech outside of render loop
+                if ('requestIdleCallback' in window) {
+                    requestIdleCallback(speakNow, { timeout: 100 });
+                } else {
+                    setTimeout(speakNow, 0);
+                }
             }
         },
 
@@ -1092,6 +1169,7 @@
         camera.rotation.x = -0.1;
 
         renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setPixelRatio(DeviceConfig.pixelRatio); // Cap at 2x on mobile
         renderer.setSize(container.clientWidth, container.clientHeight);
         container.appendChild(renderer.domElement);
 
@@ -1279,7 +1357,12 @@
     function setupPostProcessing(w, h) {
         composer = new EffectComposer(renderer);
         composer.addPass(new RenderPass(scene, camera));
-        composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.75, 0.5, 0.2));
+        
+        // Use reduced resolution for bloom on mobile (same visual, less GPU)
+        const bloomW = Math.floor(w * DeviceConfig.bloomResolutionScale);
+        const bloomH = Math.floor(h * DeviceConfig.bloomResolutionScale);
+        composer.addPass(new UnrealBloomPass(new THREE.Vector2(bloomW, bloomH), DeviceConfig.bloomStrength, DeviceConfig.bloomRadius, 0.2));
+        
         rgbPass = new ShaderPass(RGBShiftShader);
         rgbPass.uniforms['amount'].value = 0.0015; 
         composer.addPass(rgbPass);
@@ -1289,8 +1372,8 @@
     function createGround() {
         const width = 150;
         const length = GROUND_SIZE;
-        const segmentsW = 50;
-        const segmentsH = 50;
+        const segmentsW = DeviceConfig.groundSegments; // Adaptive ground complexity
+        const segmentsH = DeviceConfig.groundSegments;
         const geo = new THREE.PlaneGeometry(width, length, segmentsW, segmentsH);
         
         const posAttribute = geo.attributes.position;
@@ -1347,7 +1430,7 @@
             hud.className = "text-xs mt-1 text-[#00ff41] opacity-80";
             groundMesh1.material.color.setHex(COLORS.neonGreen);
             AudioSys.tempo = 128;
-            // AudioSys.speak("Protocol Start.");
+            AudioSys.speak("Protocol Start.");
         } else if (p === 2) {
             hud.innerText = "PHASE: HARDLINE";
             hud.className = "text-xs mt-1 text-[#00ffff] opacity-100 font-bold";
@@ -1355,7 +1438,7 @@
             AudioSys.tempo = 138;
             composer.passes[1].strength = 3.0;
             setTimeout(() => { composer.passes[1].strength = 0.75; }, 500);
-            // AudioSys.speak("Phase 2. Hardline.");
+            AudioSys.speak("Phase 2. Hardline.");
         } else if (p === 3) {
             hud.innerText = "PHASE: SYSTEM OVERDRIVE";
             hud.className = "text-xs mt-1 text-[#ff00ff] opacity-100 font-bold animate-pulse";
@@ -1363,7 +1446,7 @@
             AudioSys.tempo = 150;
             composer.passes[1].strength = 4.0;
             setTimeout(() => { composer.passes[1].strength = 0.75; }, 500);
-            // AudioSys.speak("Phase 3. System Overdrive.");
+            AudioSys.speak("Phase 3. System Overdrive.");
         }
     }
     
@@ -1377,9 +1460,12 @@
     function createStarfield() {
         const geo = new THREE.BufferGeometry();
         const pos = [];
-        for(let i=0; i<2000; i++) pos.push((Math.random()-0.5)*200, (Math.random()-0.5)*100, (Math.random()-0.5)*200);
+        const starCount = DeviceConfig.starfieldCount; // Adaptive star count
+        // Compensate by making stars slightly larger on mobile for same visual density
+        const starSize = DeviceConfig.isMobile ? 0.15 : 0.1;
+        for(let i=0; i<starCount; i++) pos.push((Math.random()-0.5)*200, (Math.random()-0.5)*100, (Math.random()-0.5)*200);
         geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-        const mat = new THREE.PointsMaterial({size: 0.1, color: 0xffffff});
+        const mat = new THREE.PointsMaterial({size: starSize, color: 0xffffff});
         scene.add(new THREE.Points(geo, mat));
     }
 
@@ -1496,7 +1582,7 @@
 
     function spawnBoss() {
         AudioSys.playBossSpawn();
-        // AudioSys.speak("Warning. Boss Detected.");
+        AudioSys.speak("Warning. Boss Detected.");
         const config = BOSS_CONFIGS[Math.floor(Math.random() * BOSS_CONFIGS.length)];
         
         const mesh = createBossMesh(config);
@@ -1586,7 +1672,7 @@
         spawnParticles(player.position, powerUpData.color);
         
         // Voice Announcement
-        // if (powerUpData.label) AudioSys.speak(powerUpData.label);
+        if (powerUpData.label) AudioSys.speak(powerUpData.label);
         
         if (powerUpData.type === 'SHIELD') {
             playerState.shield = true;
@@ -1649,7 +1735,7 @@
     }
     
     function spawnParticles(pos, color) {
-        const count = 12;
+        const count = DeviceConfig.particleCount; // Adaptive particle count
         // Use Shared Assets
         const mat = getSharedMaterial(color, false, true); // Transparent
         for(let i=0; i<count; i++) {
@@ -1664,7 +1750,7 @@
     }
     
     function spawnHullDebris(pos) {
-        const count = 8;
+        const count = DeviceConfig.isMobile ? 5 : 8; // Fewer debris on mobile
         // Use Shared Assets
         const mat = getSharedMaterial(COLORS.hullGrey, false, false);
         mat.side = THREE.DoubleSide;
@@ -1687,28 +1773,28 @@
     function checkCollisions() {
         if(isDying) return; 
         
-        const pBox = new THREE.Box3().setFromObject(player);
+        // Use cached collision boxes (no per-frame object creation)
+        CollisionCache.updatePlayerBox(player);
         
         for (let i = powerUps.length - 1; i >= 0; i--) {
-            if (pBox.intersectsBox(new THREE.Box3().setFromObject(powerUps[i]))) {
+            if (CollisionCache.checkIntersection(powerUps[i])) {
                 activatePowerUp(powerUps[i].userData);
                 scene.remove(powerUps[i]); powerUps.splice(i, 1);
             }
         }
         
         if (boss) {
-            if (pBox.intersectsBox(new THREE.Box3().setFromObject(boss))) {
+            if (CollisionCache.checkIntersection(boss)) {
                 AudioSys.playExplosion();
                 startDeathSequence();
             }
         }
 
         for (let i = lasers.length - 1; i >= 0; i--) {
-            const lBox = new THREE.Box3().setFromObject(lasers[i]);
             let laserHit = false;
             
             if (boss && !laserHit) {
-                 if (lBox.intersectsBox(new THREE.Box3().setFromObject(boss))) {
+                 if (CollisionCache.checkBoxIntersection(lasers[i], boss)) {
                      boss.userData.hp--;
                      AudioSys.playBass(AudioSys.ctx.currentTime, 50, 1.0); 
                      const pct = (boss.userData.hp / boss.userData.maxHp) * 100;
@@ -1725,7 +1811,7 @@
             if (laserHit) continue;
 
             for (let j = enemies.length - 1; j >= 0; j--) {
-                if (lBox.intersectsBox(new THREE.Box3().setFromObject(enemies[j]))) {
+                if (CollisionCache.checkBoxIntersection(lasers[i], enemies[j])) {
                     AudioSys.playExplosion();
                     spawnParticles(enemies[j].position, enemies[j].material.color);
                     shakeIntensity += 0.1;
@@ -1739,7 +1825,7 @@
         }
         
         for (let i = enemies.length - 1; i >= 0; i--) {
-            if (pBox.intersectsBox(new THREE.Box3().setFromObject(enemies[i]))) {
+            if (CollisionCache.checkIntersection(enemies[i])) {
                 if (playerState.shield) {
                     // Armor Break
                     AudioSys.playShieldBreak();
@@ -1797,7 +1883,7 @@
     function gameOver(reason) {
         isGameOver = true; isGameRunning = false; isDying = false;
         AudioSys.stop();
-        // AudioSys.speak("System Failure.");
+        AudioSys.speak("System Failure.");
         document.getElementById('overlay-title').innerText = `${reason}\nSCORE: ${score}`;
         document.getElementById('start-btn').style.display = 'none';
         document.getElementById('form-container').classList.remove('hidden');
@@ -1813,7 +1899,7 @@
         AudioSys.init(); 
         AudioSys.start();
         
-        setTimeout(() => { /* AudioSys.speak("Protocol Initiated."); */ }, 100);
+        setTimeout(() => { AudioSys.speak("Protocol Initiated."); }, 100);
 
         isGameOver = false; isGameRunning = true; isDying = false;
         score = 0; missedEnemies = 0; gameStartTime = performance.now();
