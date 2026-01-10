@@ -466,7 +466,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.1.4 // DEBUG</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.1.5 // DEBUG</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -485,7 +485,6 @@
     import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
     import { CopyShader } from 'three/addons/shaders/CopyShader.js';
     import { RGBShiftShader } from 'three/addons/shaders/RGBShiftShader.js';
-    import SamJs from 'https://esm.sh/sam-js@0.3.1';
 
     import { initializeApp } from 'firebase/app';
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
@@ -699,7 +698,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.1.4 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.1.5 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -707,7 +706,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.1.4 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.1.5 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -781,15 +780,35 @@
         voices: [],
         utterancePool: [],
         activeUtterance: null,
-        sam: null,
+        speechFrame: null,
         
         init: function() {
             if (!this.ctx) {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 this.ctx = new AudioContext();
             }
-            if (DeviceConfig.isIOS && !this.sam) {
-                this.sam = new SamJs({ speed: 40, pitch: 1, throat: 190, mouth: 190 });
+            if (DeviceConfig.isIOS && !this.speechFrame) {
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.srcdoc = `<!DOCTYPE html><html><head></head><body><script>
+                    window.addEventListener('message', function(e) {
+                        if (e.data && e.data.type === 'speak') {
+                            const msg = new SpeechSynthesisUtterance(e.data.text);
+                            msg.pitch = 0.4;
+                            msg.rate = 0.85;
+                            msg.volume = 1.0;
+                            const voices = speechSynthesis.getVoices();
+                            const voice = voices.find(v => v.name.includes('Daniel')) ||
+                                          voices.find(v => v.name.toLowerCase().includes('male')) ||
+                                          voices.find(v => v.lang === 'en-US') ||
+                                          voices[0];
+                            if (voice) msg.voice = voice;
+                            speechSynthesis.speak(msg);
+                        }
+                    });
+                <\/script></body></html>`;
+                document.body.appendChild(iframe);
+                this.speechFrame = iframe;
             }
             // Init voices
             if ('speechSynthesis' in window) {
@@ -854,8 +873,8 @@
             if (this.isMuted) return;
             if (text.trim() === " " || text.trim() === "") return;
 
-            if (DeviceConfig.isIOS && this.sam) {
-                this.sam.speak(text);
+            if (DeviceConfig.isIOS && this.speechFrame && this.speechFrame.contentWindow) {
+                this.speechFrame.contentWindow.postMessage({ type: 'speak', text: text }, '*');
                 return;
             }
 
