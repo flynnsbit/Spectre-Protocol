@@ -466,7 +466,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.1.1 // DEBUG</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.1.2 // DEBUG</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -485,6 +485,7 @@
     import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
     import { CopyShader } from 'three/addons/shaders/CopyShader.js';
     import { RGBShiftShader } from 'three/addons/shaders/RGBShiftShader.js';
+    import SamJs from 'https://esm.sh/sam-js@0.3.1';
 
     import { initializeApp } from 'firebase/app';
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
@@ -698,7 +699,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.1.1 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.1.2 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -706,7 +707,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.1.1 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.1.2 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -779,12 +780,16 @@
         nextNoteTime: 0, tempo: 128, lookahead: 25.0, scheduleAheadTime: 0.1, timerID: null, measure: 0, beat: 0,
         voices: [],
         utterancePool: [],
-        activeUtterance: null, // Hold reference to prevent GC
+        activeUtterance: null,
+        sam: null,
         
         init: function() {
             if (!this.ctx) {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 this.ctx = new AudioContext();
+            }
+            if (DeviceConfig.isIOS && !this.sam) {
+                this.sam = new SamJs({ speed: 72, pitch: 30, throat: 128, mouth: 128 });
             }
             // Init voices
             if ('speechSynthesis' in window) {
@@ -847,9 +852,14 @@
 
         speak: function(text) {
             if (this.isMuted) return;
-            if ('speechSynthesis' in window) {
-                if (text.trim() === " ") return;
+            if (text.trim() === " " || text.trim() === "") return;
 
+            if (DeviceConfig.isIOS && this.sam) {
+                this.sam.speak(text);
+                return;
+            }
+
+            if ('speechSynthesis' in window) {
                 const msg = new SpeechSynthesisUtterance(text);
                 msg.pitch = 0.4;
                 msg.rate = 0.9;
@@ -861,14 +871,6 @@
                 }
 
                 if (this.selectedVoice) msg.voice = this.selectedVoice;
-
-                msg.onend = () => {
-                    const buffer = new SpeechSynthesisUtterance("");
-                    buffer.volume = 0;
-                    buffer.rate = 10;
-                    this.utterancePool.push(buffer);
-                    window.speechSynthesis.speak(buffer);
-                };
 
                 window.speechSynthesis.speak(msg);
             }
