@@ -466,7 +466,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.8 // DEBUG</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.0.9 // DEBUG</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -698,7 +698,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.0.8 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.0.9 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -706,7 +706,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.0.8 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.0.9 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -778,6 +778,7 @@
         ctx: null, isMuted: false, isPlaying: false,
         nextNoteTime: 0, tempo: 128, lookahead: 25.0, scheduleAheadTime: 0.1, timerID: null, measure: 0, beat: 0,
         voices: [],
+        utterancePool: [],
         activeUtterance: null, // Hold reference to prevent GC
         
         init: function() {
@@ -847,39 +848,26 @@
         speak: function(text) {
             if (this.isMuted) return;
             if ('speechSynthesis' in window) {
-                // Cancel ongoing to prevent queue buildup
                 window.speechSynthesis.cancel();
 
-                if (text.trim() === " ") return; // Silent unlock, don't rumble
+                if (text.trim() === " ") return;
 
-                // Defer speech to next idle frame to prevent FPS hitch on iPhone
-                // Uses requestIdleCallback if available, falls back to setTimeout
                 const speakNow = () => {
                     const msg = new SpeechSynthesisUtterance(text);
-                    msg.pitch = 0.4; // Deep
-                    msg.rate = 0.9;  // Heavy
+                    msg.pitch = 0.4;
+                    msg.rate = 0.9;
                     msg.volume = 1.0;
 
-                    // Keep reference to prevent GC during speech
-                    this.activeUtterance = msg;
-
-                    // Defer cleanup to idle time to prevent GC-induced frame hitch on iOS
-                    const deferCleanup = () => {
-                        if ('requestIdleCallback' in window) {
-                            requestIdleCallback(() => { this.activeUtterance = null; }, { timeout: 500 });
-                        } else {
-                            setTimeout(() => { this.activeUtterance = null; }, 100);
-                        }
-                    };
-                    msg.onend = deferCleanup;
-                    msg.onerror = deferCleanup;
+                    this.utterancePool.push(msg);
+                    if (this.utterancePool.length > 20) {
+                        this.utterancePool.shift();
+                    }
 
                     if (this.selectedVoice) msg.voice = this.selectedVoice;
 
                     window.speechSynthesis.speak(msg);
                 };
                 
-                // Schedule speech outside of render loop
                 if ('requestIdleCallback' in window) {
                     requestIdleCallback(speakNow, { timeout: 100 });
                 } else {
