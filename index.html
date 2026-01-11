@@ -462,65 +462,10 @@
         <span id="fps-counter">FPS: --</span> | <span id="game-timer">TIME: 0.0s</span>
     </div>
     
-    <!-- Hidden iframe for iOS speech isolation - keeps speech in separate audio context -->
-    <iframe id="speech-iframe" style="display:none;" srcdoc="<!DOCTYPE html><html><body><script>
-let queue = [];
-let keepAliveActive = false;
-let selectedVoice = null;
-
-function loadVoices() {
-    const voices = speechSynthesis.getVoices();
-    selectedVoice = voices.find(v => v.name.includes('Daniel')) ||
-                   voices.find(v => v.name.toLowerCase().includes('male')) ||
-                   voices.find(v => v.name.includes('Google US English')) ||
-                   voices.find(v => v.lang === 'en-US') ||
-                   voices[0];
-}
-if (speechSynthesis.onvoiceschanged !== undefined) {
-    speechSynthesis.onvoiceschanged = loadVoices;
-}
-loadVoices();
-
-function keepAlive() {
-    if (!keepAliveActive) return;
-    
-    if (queue.length > 0) {
-        const text = queue.shift();
-        const msg = new SpeechSynthesisUtterance(text);
-        msg.pitch = 0.4;
-        msg.rate = 0.85;
-        msg.volume = 1.0;
-        if (selectedVoice) msg.voice = selectedVoice;
-        msg.onend = () => setTimeout(keepAlive, 50);
-        msg.onerror = () => setTimeout(keepAlive, 50);
-        speechSynthesis.speak(msg);
-    } else {
-        const silence = new SpeechSynthesisUtterance('.');
-        silence.volume = 0.01;
-        silence.rate = 10;
-        silence.onend = () => setTimeout(keepAlive, 100);
-        silence.onerror = () => setTimeout(keepAlive, 100);
-        speechSynthesis.speak(silence);
-    }
-}
-
-window.addEventListener('message', (e) => {
-    if (e.data.type === 'startKeepAlive') {
-        keepAliveActive = true;
-        keepAlive();
-    } else if (e.data.type === 'stopKeepAlive') {
-        keepAliveActive = false;
-        speechSynthesis.cancel();
-    } else if (e.data.type === 'speak') {
-        queue.push(e.data.text);
-    }
-});
-</script></body></html>"></iframe>
-    
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.1.8 // DEBUG</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.1.7 // DEBUG</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -752,7 +697,7 @@ window.addEventListener('message', (e) => {
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.1.8 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.1.7 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -760,7 +705,7 @@ window.addEventListener('message', (e) => {
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.1.8 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.1.7 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -848,25 +793,40 @@ window.addEventListener('message', (e) => {
             }
         },
         
-        getSpeechIframe: function() {
-            const iframe = document.getElementById('speech-iframe');
-            return iframe ? iframe.contentWindow : null;
-        },
-        
         startSpeechKeepAlive: function() {
             if (!DeviceConfig.isIOS || this.speechKeepAliveActive) return;
             this.speechKeepAliveActive = true;
-            const iframeWin = this.getSpeechIframe();
-            if (iframeWin) {
-                iframeWin.postMessage({ type: 'startKeepAlive' }, '*');
-            }
+            
+            const keepAlive = () => {
+                if (!this.speechKeepAliveActive || this.isMuted) return;
+                
+                if (this.speechQueue.length > 0) {
+                    const text = this.speechQueue.shift();
+                    const msg = new SpeechSynthesisUtterance(text);
+                    msg.pitch = 0.4;
+                    msg.rate = 0.85;
+                    msg.volume = 1.0;
+                    if (this.selectedVoice) msg.voice = this.selectedVoice;
+                    msg.onend = () => setTimeout(keepAlive, 50);
+                    msg.onerror = () => setTimeout(keepAlive, 50);
+                    window.speechSynthesis.speak(msg);
+                } else {
+                    const silence = new SpeechSynthesisUtterance(".");
+                    silence.volume = 0.01;
+                    silence.rate = 10;
+                    silence.onend = () => setTimeout(keepAlive, 100);
+                    silence.onerror = () => setTimeout(keepAlive, 100);
+                    window.speechSynthesis.speak(silence);
+                }
+            };
+            
+            keepAlive();
         },
         
         stopSpeechKeepAlive: function() {
             this.speechKeepAliveActive = false;
-            const iframeWin = this.getSpeechIframe();
-            if (iframeWin) {
-                iframeWin.postMessage({ type: 'stopKeepAlive' }, '*');
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
             }
         },
         
@@ -926,10 +886,7 @@ window.addEventListener('message', (e) => {
             if (text.trim() === " " || text.trim() === "") return;
 
             if (DeviceConfig.isIOS) {
-                const iframeWin = this.getSpeechIframe();
-                if (iframeWin) {
-                    iframeWin.postMessage({ type: 'speak', text: text }, '*');
-                }
+                this.speechQueue.push(text);
                 return;
             }
 
