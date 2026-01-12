@@ -379,6 +379,8 @@
     <div id="game-container">
         <div id="hud">
             <div>SCORE: <span id="score-display">0</span></div>
+            <div id="combo-display" class="text-yellow-400 font-bold" style="display:none;">COMBO x<span id="combo-count">0</span></div>
+            <div id="streak-display" class="text-xs text-orange-400" style="display:none;">STREAK: <span id="streak-count">0</span></div>
             <div class="mt-2 text-red-400">BREACHES: <span id="missed-display">0</span>/3</div>
             <div id="powerup-display" class="text-sm mt-2 font-bold"></div>
             <div id="wave-display" class="text-xs mt-1 text-pink-500 opacity-80">PHASE: INITIALIZING</div>
@@ -435,6 +437,7 @@
                 </div>
             </div>
             <button id="start-btn" class="neon-button">INITIATE PROTOCOL</button>
+            <button id="quick-restart-btn" class="neon-button mt-2 hidden" style="background: rgba(255,0,127,0.2); border-color: #ff007f;">QUICK RESTART [SPACE]</button>
             
             <!-- iOS Install Button (Hidden by default) -->
             <button id="ios-install-btn" class="mt-4 border border-[#00ffc8] text-[#00ffc8] bg-transparent px-4 py-2 font-mono text-xs rounded hover:bg-[#00ffc8] hover:text-black transition-colors hidden">
@@ -465,7 +468,7 @@
     <div id="ui-panel">
         <div class="flex flex-col items-start">
             <h1>SPECTRE PROTOCOL</h1>
-            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.1.7 // DEBUG</p>
+            <p id="sys-version" class="text-xs text-cyan-600 font-mono">SYS.VER.10.2.0 // DEBUG</p>
         </div>
         <div class="text-center hidden md:block">
             <div class="text-xs text-cyan-500 font-mono animate-pulse">DATABASE LINK ESTABLISHED</div>
@@ -697,7 +700,7 @@
                  localStorage.setItem('spectre_local_leaderboard', JSON.stringify(localScores));
             }
             renderLeaderboard(localScores.sort((a, b) => b.score - a.score));
-            document.getElementById('sys-version').innerText = "SYS.VER.10.1.7 // LOCAL STORAGE";
+            document.getElementById('sys-version').innerText = "SYS.VER.10.2.0 // LOCAL STORAGE";
         };
 
         if (!FirebaseState.db) {
@@ -705,7 +708,7 @@
             return;
         }
         
-        document.getElementById('sys-version').innerText = "SYS.VER.10.1.7 // CLOUD SYNC";
+        document.getElementById('sys-version').innerText = "SYS.VER.10.2.0 // CLOUD SYNC";
         const scoresQuery = query(getScoresCollectionRef(), orderBy('score', 'desc'), limit(10));
         
         onSnapshot(scoresQuery, (snapshot) => {
@@ -1137,6 +1140,13 @@
     let targetY = -1.0;
     let shakeIntensity = 0;
     
+    // Combo System
+    let comboCount = 0;
+    let lastKillTime = 0;
+    const COMBO_TIMEOUT = 2000;
+    let killStreak = 0;
+    let highScore = parseInt(localStorage.getItem('spectre_high_score') || '0');
+    
     // Player Health System
     let playerHP = 3;
     let playerInvulnerableUntil = 0;
@@ -1165,7 +1175,8 @@
         gold: 0xffd700,
         white: 0xffffff,
         neonYellow: 0xffff00,
-        hullGrey: 0x222222
+        hullGrey: 0x222222,
+        purple: 0x9900ff
     };
     const GROUND_SIZE = 200;
     
@@ -1184,7 +1195,8 @@
     const POWERUP_TYPES = [
         { name: 'RAPID', color: COLORS.gold, label: "RAPID FIRE" },
         { name: 'SPREAD', color: COLORS.neonBlue, label: "SPREAD SHOT" },
-        { name: 'SHIELD', color: COLORS.white, label: "ARMOR PLATING" }
+        { name: 'SHIELD', color: COLORS.white, label: "ARMOR PLATING" },
+        { name: 'SLOWMO', color: COLORS.purple, label: "TIME DILATION" }
     ];
 
     function init() {
@@ -1237,6 +1249,11 @@
         }, {once: true});
 
         window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && isGameOver && !isGameRunning) {
+                e.preventDefault();
+                startGame();
+                return;
+            }
             if(!isGameRunning || isDying) return;
             if (e.code === 'ArrowLeft' || e.code === 'KeyA') { keys.left = true; }
             if (e.code === 'ArrowRight' || e.code === 'KeyD') { keys.right = true; }
@@ -1254,6 +1271,7 @@
         });
 
         document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('quick-restart-btn').addEventListener('click', startGame);
         document.getElementById('submit-score-btn').addEventListener('click', submitScore);
         
         document.getElementById('mute-btn').addEventListener('click', (e) => {
@@ -1755,8 +1773,13 @@
         
         if (startPos) mesh.position.copy(startPos);
         else {
-            const use3DSpawn = score > 5000;
-            const yPos = use3DSpawn ? (Math.random() * 5) - 1.5 : -1.0;
+            const isPreFirstBoss = nextBossScoreThreshold === 5000;
+            let yPos;
+            if (isPreFirstBoss) {
+                yPos = 0.5;
+            } else {
+                yPos = (Math.random() * 5) - 1.5;
+            }
             const safeY = Math.max(-1.5, Math.min(3.5, yPos));
             mesh.position.set((Math.random()-0.5)*10, safeY, -100);
         }
@@ -1851,7 +1874,7 @@
                     const enemyScore = enemies[j].userData.scoreVal || 100;
                     scene.remove(enemies[j]); enemies.splice(j, 1);
                     scene.remove(lasers[i]); lasers.splice(i, 1);
-                    score += enemyScore; updateUI();
+                    registerKill(enemyScore);
                     break;
                 }
             }
@@ -1887,6 +1910,7 @@
                         if(rgbPass) rgbPass.uniforms['amount'].value = 0.15;
                         playerInvulnerableUntil = now + 2000; // 2 seconds invulnerability
                         spawnHullDebris(player.position); // Visual flair
+                        resetCombo();
                         
                         // Flash red
                         frameMesh.material.color.setHex(0xff0000);
@@ -1907,10 +1931,66 @@
         shakeIntensity += 2.0; 
         if(rgbPass) rgbPass.uniforms['amount'].value = 0.2;
     }
+    
+    function getComboMultiplier() {
+        if (comboCount < 2) return 1;
+        if (comboCount < 5) return 2;
+        if (comboCount < 10) return 3;
+        if (comboCount < 20) return 5;
+        return 10;
+    }
+    
+    function registerKill(baseScore) {
+        const now = performance.now();
+        
+        if (now - lastKillTime < COMBO_TIMEOUT) {
+            comboCount++;
+        } else {
+            comboCount = 1;
+        }
+        lastKillTime = now;
+        killStreak++;
+        
+        const multiplier = getComboMultiplier();
+        const finalScore = baseScore * multiplier;
+        score += finalScore;
+        
+        if (comboCount === 3) AudioSys.speak("Double Kill");
+        else if (comboCount === 5) AudioSys.speak("Triple Kill");
+        else if (comboCount === 10) AudioSys.speak("Unstoppable");
+        else if (comboCount === 20) AudioSys.speak("Godlike");
+        
+        updateUI();
+    }
+    
+    function resetCombo() {
+        comboCount = 0;
+        killStreak = 0;
+        updateUI();
+    }
 
     function updateUI() {
         document.getElementById('score-display').innerText = score;
         document.getElementById('missed-display').innerText = missedEnemies;
+        
+        const comboEl = document.getElementById('combo-display');
+        const comboCountEl = document.getElementById('combo-count');
+        const streakEl = document.getElementById('streak-display');
+        const streakCountEl = document.getElementById('streak-count');
+        
+        if (comboCount >= 2) {
+            comboEl.style.display = 'block';
+            comboCountEl.innerText = getComboMultiplier();
+        } else {
+            comboEl.style.display = 'none';
+        }
+        
+        if (killStreak >= 5) {
+            streakEl.style.display = 'block';
+            streakCountEl.innerText = killStreak;
+        } else {
+            streakEl.style.display = 'none';
+        }
     }
 
     function gameOver(reason) {
@@ -1918,8 +1998,20 @@
         AudioSys.stop();
         AudioSys.stopSpeechKeepAlive();
         AudioSys.speak("System Failure.");
-        document.getElementById('overlay-title').innerText = `${reason}\nSCORE: ${score}`;
+        
+        let message = `${reason}\nSCORE: ${score}`;
+        if (highScore > 0 && score < highScore) {
+            const diff = highScore - score;
+            message += `\n${diff} FROM HIGH SCORE`;
+        } else if (score > highScore) {
+            highScore = score;
+            localStorage.setItem('spectre_high_score', highScore.toString());
+            message += `\nNEW HIGH SCORE!`;
+        }
+        
+        document.getElementById('overlay-title').innerText = message;
         document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('quick-restart-btn').classList.remove('hidden');
         document.getElementById('form-container').classList.remove('hidden');
         document.getElementById('agent-name-input').focus();
         document.getElementById('overlay-screen').style.display = 'flex';
@@ -1940,6 +2032,9 @@
         shakeIntensity = 0;
         playerState.shield = false;
         playerState.activePowerUp = 'NONE';
+        comboCount = 0;
+        killStreak = 0;
+        lastKillTime = 0;
         
         playerHP = 3; // Allow 2 hits (HP 3 -> 2 -> 1 -> Dead)
         playerInvulnerableUntil = 0;
@@ -1963,6 +2058,7 @@
         
         updateUI();
         document.getElementById('overlay-screen').style.display = 'none';
+        document.getElementById('quick-restart-btn').classList.add('hidden');
         enemies.forEach(e => scene.remove(e)); enemies.length = 0;
         lasers.forEach(l => scene.remove(l)); lasers.length = 0;
         particles.forEach(p => scene.remove(p)); particles.length = 0;
@@ -2161,7 +2257,10 @@
                 if (p.position.z > 6) { scene.remove(p); powerUps.splice(i, 1); }
             }
             
-            const baseSpeed = 0.025 + (now - gameStartTime) / 120000 * 0.06;
+            const isPreFirstBoss = nextBossScoreThreshold === 5000;
+            const levelSpeedMult = isPreFirstBoss ? 0.6 : 1.0;
+            const slowMoMult = playerState.activePowerUp === 'SLOWMO' ? 0.3 : 1.0;
+            const baseSpeed = (0.025 + (now - gameStartTime) / 120000 * 0.06) * levelSpeedMult * slowMoMult;
             for (let i = enemies.length - 1; i >= 0; i--) {
                 const moveSpeed = baseSpeed * (enemies[i].userData.speedMult || 1.0);
                 enemies[i].position.z += moveSpeed * delta * 60 * 20; 
@@ -2169,6 +2268,20 @@
                     enemies[i].rotation.x += enemies[i].userData.rotSpeed.x;
                     enemies[i].rotation.y += enemies[i].userData.rotSpeed.y;
                 }
+                
+                if (!enemies[i].userData.nearMissTriggered && enemies[i].position.z > player.position.z - 2 && enemies[i].position.z < player.position.z + 3) {
+                    const dx = enemies[i].position.x - player.position.x;
+                    const dy = enemies[i].position.y - player.position.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist < 2.5 && dist > 1.0) {
+                        enemies[i].userData.nearMissTriggered = true;
+                        score += 25;
+                        AudioSys.speak("Close Call");
+                        shakeIntensity += 0.05;
+                        updateUI();
+                    }
+                }
+                
                 if (enemies[i].position.z > 6) {
                     scene.remove(enemies[i]); enemies.splice(i, 1);
                     missedEnemies++; AudioSys.playBreach(); 
