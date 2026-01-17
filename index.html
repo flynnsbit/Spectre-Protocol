@@ -1646,7 +1646,8 @@
             score: config.score,
             name: config.name,
             movePhase: 0,
-            lastSpawn: 0
+            lastSpawn: 0,
+            isActive: false  // Boss is invulnerable until fully on screen
         };
         
         boss = mesh;
@@ -1851,6 +1852,11 @@
             
             if (boss && !laserHit) {
                  if (CollisionCache.checkBoxIntersection(lasers[i], boss)) {
+                     // Only damage boss if it's active (fully on screen and shooting)
+                     if (!boss.userData.isActive) {
+                         // Boss is invulnerable during entrance - laser passes through
+                         continue;
+                     }
                      boss.userData.hp--;
                      AudioSys.playBass(AudioSys.ctx.currentTime, 50, 1.0); 
                      const pct = (boss.userData.hp / boss.userData.maxHp) * 100;
@@ -2169,6 +2175,15 @@
                 if (boss.position.z < -25) {
                     boss.position.z += 15 * delta;
                 } else {
+                    // Boss has arrived - activate it if not already active
+                    if (!boss.userData.isActive) {
+                        boss.userData.isActive = true;
+                        AudioSys.speak("Boss vulnerable. Engage.");
+                        // Visual feedback - flash the boss
+                        composer.passes[1].strength = 2.0;
+                        setTimeout(() => { composer.passes[1].strength = 0.75; }, 300);
+                    }
+                    
                     boss.userData.movePhase += delta;
                     boss.position.x = Math.sin(boss.userData.movePhase * 0.5) * 4;
                     boss.position.y = Math.sin(boss.userData.movePhase * 1.2) * 1.0 + 1.0;
