@@ -464,6 +464,15 @@
                     MOVE: WASD / ARROWS | FIRE: HOLD SPACE / CLICK
                 </div>
             </div>
+            
+            <!-- Agent Name Input (Start Screen) -->
+            <div id="agent-name-container" class="w-full max-w-xs flex flex-col items-center mt-4">
+                <label for="agent-name-start" class="text-[#00ffc8] font-mono text-xs mb-2 tracking-widest opacity-70">ENTER AGENT DESIGNATION</label>
+                <input id="agent-name-start" type="text" maxlength="12" 
+                       class="bg-gray-900/80 border-2 border-[#00ffc8] text-[#00ffc8] px-4 py-2 font-mono text-center uppercase focus:outline-none focus:border-[#00ffc8] focus:shadow-[0_0_15px_#00ffc8] transition-all w-full placeholder-cyan-900 tracking-wider" 
+                       placeholder="AGENT_ID" autocomplete="off" spellcheck="false">
+            </div>
+            
             <button id="start-btn" class="neon-button">INITIATE PROTOCOL</button>
             <button id="quick-restart-btn" class="neon-button mt-2 hidden" style="background: rgba(255,0,127,0.2); border-color: #ff007f;">QUICK RESTART [SPACE]</button>
             
@@ -1307,7 +1316,10 @@
         });
         
         const savedName = localStorage.getItem('spectre_agent_name');
-        if(savedName) document.getElementById('agent-name-input').value = savedName;
+        if(savedName) {
+            document.getElementById('agent-name-input').value = savedName;
+            document.getElementById('agent-name-start').value = savedName;
+        }
         
         setTimeout(() => {
             if (!FirebaseState.db) {
@@ -2058,7 +2070,23 @@
         AudioSys.start();
         AudioSys.startSpeechKeepAlive();
         
-        setTimeout(() => { AudioSys.speak("Protocol Initiated."); }, 100);
+        // Get and save agent name
+        const agentNameInput = document.getElementById('agent-name-start');
+        const agentName = agentNameInput.value.trim().toUpperCase() || '';
+        if (agentName) {
+            localStorage.setItem('spectre_agent_name', agentName);
+            // Also update the game-over input for consistency
+            document.getElementById('agent-name-input').value = agentName;
+        }
+        
+        // Personalized greeting or default
+        setTimeout(() => { 
+            if (agentName) {
+                AudioSys.speak(`Agent ${agentName}, protocol initiated.`);
+            } else {
+                AudioSys.speak("Protocol Initiated.");
+            }
+        }, 100);
 
         isGameOver = false; isGameRunning = true; isDying = false;
         score = 0; missedEnemies = 0; gameStartTime = performance.now();
