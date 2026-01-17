@@ -34,6 +34,10 @@ Built as a single-file web application for maximum portability, it runs in any m
 - **PWA Ready** - Install to home screen for fullscreen native-like experience
 - **Adaptive Quality** - Automatic performance scaling for mobile devices
 - **Boss Battles** - Epic encounters every 5,000 points with unique boss types
+- **Combo System** - Chain kills for score multipliers up to 10x
+- **Near-Miss Bonus** - Earn points for close dodges
+- **Quick Restart** - Press SPACE to instantly replay after game over
+- **High Score Tracking** - Personal best saved locally with distance tracking
 
 ---
 
@@ -47,8 +51,8 @@ Built as a single-file web application for maximum portability, it runs in any m
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/spectre-protocol.git
-cd spectre-protocol
+git clone https://github.com/flynnsbit/Spectre-Protocol.git
+cd Spectre-Protocol
 
 # Install dependencies
 npm install
@@ -67,14 +71,6 @@ npm run build
 
 # Preview production build
 npm run preview
-```
-
-### Environment Variables (Optional)
-
-Create a `.env.local` file for custom configuration:
-
-```env
-GEMINI_API_KEY=your_api_key_here
 ```
 
 ---
@@ -123,6 +119,7 @@ Power-ups spawn every ~15 seconds and provide temporary advantages:
 | Rapid Fire | Gold | Fire rate: 250ms → 100ms | 10 seconds |
 | Spread Shot | Blue | Triple shot pattern | 10 seconds |
 | Armor Plating | RGB | Absorbs one collision | Until hit |
+| Time Dilation | Purple | Slows all enemies to 30% speed | 10 seconds |
 
 ### Boss Battles
 
@@ -134,12 +131,41 @@ A boss spawns every **5,000 points**. Bosses hover and spawn minions while you a
 | The Prism | Tetrahedron | 20 | 2,000 |
 | The Hive | Icosahedron | 50 | 3,000 |
 
+**Note:** Bosses are invulnerable during their entrance animation. Wait for the "Boss vulnerable. Engage." announcement before attacking.
+
+### Combo System
+
+Chain kills quickly (within 2 seconds) to build combos and multiply your score:
+
+| Combo Kills | Multiplier | Voice Callout |
+|-------------|------------|---------------|
+| 2+ | x2 | - |
+| 5+ | x3 | "Triple Kill" |
+| 10+ | x5 | "Unstoppable" |
+| 20+ | x10 | "Godlike" |
+
+Taking damage resets your combo.
+
+### Near-Miss Bonus
+
+Dodge enemies at close range (without getting hit) to earn **+25 bonus points** and hear "Close Call". Risk vs reward!
+
+### Quick Restart
+
+After game over, press **SPACE** or tap the **Quick Restart** button to immediately start a new game without navigating menus.
+
 ### Health System
 
 - **3 HP** - Player can take 2 hits before death
 - **Invulnerability** - 2 seconds after taking damage (ship blinks)
 - **Armor** - Absorbs one hit, then breaks with debris effect
 - **Death Sequence** - 1.5 second animation before game over
+
+### High Score Tracking
+
+Your personal best score is saved locally. After each game:
+- If you beat your high score: "NEW HIGH SCORE!" is displayed
+- If you didn't: Shows how many points away you were from your record
 
 ---
 
@@ -162,19 +188,20 @@ spectre-protocol/
 
 The entire game is contained in `index.html` for maximum portability. Key sections:
 
-| Lines | Section | Description |
-|-------|---------|-------------|
-| 1-477 | HTML/CSS | Game container, HUD, overlays, mobile controls |
-| 493-535 | DeviceConfig | Adaptive quality settings |
-| 537-557 | CollisionCache | Optimized collision detection |
-| 559-615 | SharedAssets | Memory-efficient geometry/material pooling |
-| 617-766 | Firebase | Auth, Firestore, leaderboard |
-| 776-1116 | AudioSys | Procedural music, SFX, TTS |
-| 1190-1273 | Scene Setup | Three.js scene, camera, renderer |
-| 1505-1582 | Player Ship | Custom stealth fighter geometry |
-| 1584-1652 | Boss System | Boss spawning and destruction |
-| 1654-1902 | Combat | Lasers, enemies, power-ups, collisions |
-| 1991-2195 | Game Loop | Main animation loop and state management |
+| Section | Description |
+|---------|-------------|
+| HTML/CSS | Game container, HUD, overlays, mobile controls |
+| DeviceConfig | Adaptive quality settings for mobile/desktop |
+| CollisionCache | Optimized collision detection with object pooling |
+| SharedAssets | Memory-efficient geometry/material caching |
+| Firebase | Authentication, Firestore, leaderboard sync |
+| AudioSys | Procedural music, SFX, text-to-speech |
+| Scene Setup | Three.js scene, camera, renderer, post-processing |
+| Player Ship | Custom stealth fighter geometry |
+| Boss System | Boss spawning, phases, and destruction |
+| Combat | Lasers, enemies, power-ups, collisions |
+| Combo System | Kill tracking, multipliers, streaks |
+| Game Loop | Main animation loop and state management |
 
 ### Game State Machine
 
@@ -496,15 +523,16 @@ Edit `checkPhaseLogic()` (~line 1486) to change when phases transition.
 
 ### Key Functions Reference
 
-| Function | Line | Purpose |
-|----------|------|---------|
-| `init()` | 1190 | Initialize game, scene, controls |
-| `startGame()` | 1929 | Reset state and begin gameplay |
-| `animate()` | 1991 | Main game loop (called every frame) |
-| `spawnEnemy()` | 1720 | Create new enemy instance |
-| `createLaser()` | 1654 | Fire player laser |
-| `checkCollisions()` | 1806 | Handle all collision detection |
-| `gameOver()` | 1916 | End game and show overlay |
+| Function | Purpose |
+|----------|---------|
+| `init()` | Initialize game, scene, controls |
+| `startGame()` | Reset state and begin gameplay |
+| `animate()` | Main game loop (called every frame) |
+| `spawnEnemy()` | Create new enemy instance |
+| `createLaser()` | Fire player laser |
+| `checkCollisions()` | Handle all collision detection |
+| `registerKill()` | Process enemy kill with combo system |
+| `gameOver()` | End game and show overlay |
 
 ---
 
